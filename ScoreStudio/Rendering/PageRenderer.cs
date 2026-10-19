@@ -17,6 +17,12 @@ public static class PageRenderer
     private static readonly Typeface BoldTextTypeface = new(new FontFamily("Segoe UI, Malgun Gothic"),
         FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
+    private static readonly Typeface ItalicTextTypeface = new(new FontFamily("Segoe UI, Malgun Gothic"),
+        FontStyles.Italic, FontWeights.Normal, FontStretches.Normal);
+
+    private static readonly Typeface BoldItalicTextTypeface = new(new FontFamily("Segoe UI, Malgun Gothic"),
+        FontStyles.Italic, FontWeights.Bold, FontStretches.Normal);
+
     /// <summary>Lyrics whose source font is a serif one; Times New Roman matches the widths the layout measures with.</summary>
     private static readonly Typeface SerifTextTypeface = new(new FontFamily("Times New Roman, Batang"),
         FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
@@ -86,7 +92,9 @@ public static class PageRenderer
                     break;
 
                 case TextItem text:
-                    var typeface = text.Serif ? SerifTextTypeface : text.Bold ? BoldTextTypeface : TextTypeface;
+                    var typeface = text.Serif ? SerifTextTypeface
+                        : text.Italic ? (text.Bold ? BoldItalicTextTypeface : ItalicTextTypeface)
+                        : text.Bold ? BoldTextTypeface : TextTypeface;
                     var formatted = Format(text.Text, typeface, text.Size, pixelsPerDip, brush);
                     var x = text.X * DipPerMm - text.Anchor switch
                     {

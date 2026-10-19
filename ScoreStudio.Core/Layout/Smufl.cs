@@ -210,4 +210,49 @@ public static class Smufl
         -1 => 3.356,
         _ => 5.14,
     };
+
+    /// <summary>
+    /// An articulation's glyph for marks above or below the note, with its width and height in staff spaces (Bravura
+    /// bounding boxes). Glyphs for above sit on their baseline; glyphs for below hang from it.
+    /// </summary>
+    public static (char Glyph, double Width, double Height) Articulation(Models.Articulation articulation, bool above) => articulation switch
+    {
+        Models.Articulation.Staccato => (above ? '\uE4A2' : '\uE4A3', 0.336, 0.336),
+        Models.Articulation.Staccatissimo => (above ? '\uE4A6' : '\uE4A7', 0.408, 1.18),
+        Models.Articulation.Accent => (above ? '\uE4A0' : '\uE4A1', 1.356, 0.98),
+        Models.Articulation.Marcato => (above ? '\uE4AC' : '\uE4AD', 0.944, 1.016),
+        Models.Articulation.Tenuto => (above ? '\uE4A4' : '\uE4A5', 1.352, 0.192),
+        _ => (above ? '\uE4C0' : '\uE4C1', 2.42, 1.33),
+    };
+
+    /// <summary>The music font's dynamic letter for p, m, f, r, s, z or n, with its advance width in staff spaces.</summary>
+    public static (char Glyph, double Width)? DynamicLetter(char letter) => letter switch
+    {
+        'p' => ('\uE520', 1.46),
+        'm' => ('\uE521', 1.748),
+        'f' => ('\uE522', 1.456),
+        'r' => ('\uE523', 1.108),
+        's' => ('\uE524', 0.916),
+        'z' => ('\uE525', 0.976),
+        'n' => ('\uE526', 1.232),
+        _ => null,
+    };
+
+    /// <summary>
+    /// The metronome-mark note for a MusicXML beat unit, with its advance width in staff spaces. Its notehead is centred
+    /// on the baseline and its stem rises 3.5 spaces.
+    /// </summary>
+    public static (char Glyph, double Width) MetronomeNote(string beatUnit) => beatUnit switch
+    {
+        "breve" => ('\uE1D0', 2.62),
+        "whole" => ('\uE1D2', 1.836),
+        "half" => ('\uE1D3', 1.364),
+        "eighth" => ('\uE1D7', 2.264),
+        "16th" => ('\uE1D9', 2.324),
+        "32nd" => ('\uE1DB', 2.252),
+        "64th" => ('\uE1DD', 2.252),
+        _ => ('\uE1D5', 1.328),
+    };
+
+    public const char MetronomeDot = '\uE1E7';
 }

@@ -161,6 +161,7 @@ public sealed class PageRenderingTests
     [InlineData("latin-lyrics")]
     [InlineData("source-widths")]
     [InlineData("tuplets")]
+    [InlineData("finale-marks")]
     public void ImportedMusicXml_DrawsClefsAndNoteheadsWhereTheLayoutPutsThem(string sample)
     {
         RunSta(() =>

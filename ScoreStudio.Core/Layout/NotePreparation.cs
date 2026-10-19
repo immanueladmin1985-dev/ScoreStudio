@@ -50,6 +50,9 @@ internal sealed class PreparedChord
     /// <summary>Verses whose extender line ends at this chord.</summary>
     public IReadOnlyList<int> ExtendEnds { get; init; } = Array.Empty<int>();
 
+    /// <summary>Articulations and fermatas of every note in the chord (or of the rest), in enum order.</summary>
+    public IReadOnlyList<Articulation> Articulations { get; init; } = Array.Empty<Articulation>();
+
     /// <summary>
     /// Shift to the right of the onset, in staff spaces: one of two voices moves aside when their notes would touch (a
     /// second, or a unison that cannot share a notehead).
@@ -211,6 +214,7 @@ internal static class NotePreparation
         public required List<(int Position, int? Accidental, int Midi, bool Tie)> Notes { get; init; }
         public required IReadOnlyList<ScoreLyric> Lyrics { get; init; }
         public required IReadOnlyList<int> ExtendEnds { get; init; }
+        public required IReadOnlyList<Articulation> Articulations { get; init; }
         public required IReadOnlyList<BeamType> Beams { get; set; }
 
         /// <summary>The source's stem direction for the chord, if it gives one.</summary>
@@ -253,6 +257,7 @@ internal static class NotePreparation
                         PartIndex = partIndex, Staff = staff, Voice = first.Voice, Start = Start(first), Value = value,
                         Duration = isMeasureRest ? Rational.Max(duration, nominal) : duration,
                         IsRest = true, IsMeasureRest = isMeasureRest, VoiceRole = role, OctaveShift = first.OctaveShift,
+                        Articulations = first.Articulations.Distinct().OrderBy(a => a).ToList(),
                         RightExtent = isMeasureRest ? 0 : Smufl.RestWidth(value.Type) + DotsWidth(value),
                     };
                     result.Add(rest);
@@ -296,6 +301,7 @@ internal static class NotePreparation
                     SourceStemUp = chordEvents.Select(e => e.StemUp).FirstOrDefault(s => s is not null),
                     Lyrics = chordEvents.Select(e => e.Lyrics).FirstOrDefault(l => l is { Count: > 0 }) ?? new List<ScoreLyric>(),
                     ExtendEnds = chordEvents.SelectMany(e => e.ExtendEnds).Distinct().ToList(),
+                    Articulations = chordEvents.SelectMany(e => e.Articulations).Distinct().OrderBy(a => a).ToList(),
                 });
             }
 
@@ -305,7 +311,7 @@ internal static class NotePreparation
             {
                 var stemUp = chord.GroupStemUp ?? chord.SourceStemUp ?? StemUp(chord.Role, chord.Notes.Select(n => n.Position).ToList());
                 built[chord] = BuildChord(partIndex, staff, chord.First.Voice, Start(chord.First), Duration(chord.First), chord.Value, stemUp, chord.Role,
-                    chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds);
+                    chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds, chord.Articulations);
                 result.Add(built[chord]);
             }
 
@@ -442,7 +448,7 @@ internal static class NotePreparation
     private static PreparedChord BuildChord(
         int partIndex, int staff, int voice, Rational start, Rational duration, NoteValue value, bool stemUp, int role,
         List<(int Position, int? Accidental, int Midi, bool Tie)> notes, int octaveShift, IReadOnlyList<BeamType> beams,
-        IReadOnlyList<ScoreLyric> lyrics, IReadOnlyList<int> extendEnds)
+        IReadOnlyList<ScoreLyric> lyrics, IReadOnlyList<int> extendEnds, IReadOnlyList<Articulation> articulations)
     {
         var sorted = notes.OrderBy(n => n.Position).ToList();
         var sides = new int[sorted.Count];
@@ -483,6 +489,7 @@ internal static class NotePreparation
         {
             PartIndex = partIndex, Staff = staff, Voice = voice, Start = start, Duration = duration, Value = value, IsRest = false,
             StemUp = stemUp, VoiceRole = role, OctaveShift = octaveShift, Beams = beams, Lyrics = lyrics, ExtendEnds = extendEnds,
+            Articulations = articulations,
             Notes = sorted.Select((n, i) => new PreparedNote(n.Position, n.Accidental, sides[i], columns[i], n.Midi, n.Tie)).ToList(),
             LeftExtent = displacedLeft + accidentalRoom,
             RightExtent = headWidth + displacedRight + Math.Max(DotsWidth(value), flagRoom),

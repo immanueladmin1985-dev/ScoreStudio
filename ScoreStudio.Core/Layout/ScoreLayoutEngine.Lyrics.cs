@@ -100,8 +100,8 @@ public static partial class ScoreLayoutEngine
         }
     }
 
-    /// <summary>A rest's place in time, so extender lines stop before it.</summary>
-    private sealed record PlacedRest(int Slot, int Measure, Rational Start, int Voice);
+    /// <summary>A drawn rest: its place in time, so extender lines stop before it, and where it was drawn, for a fermata on it.</summary>
+    private sealed record PlacedRest(int Slot, int Measure, Rational Start, int Voice, PreparedChord? Chord = null, double X = 0, double Top = 0, double Bottom = 0);
 
     /// <summary>Whether <paramref name="a"/> comes after <paramref name="b"/> in time.</summary>
     private static bool IsAfter(PlacedChord a, PlacedChord b) =>

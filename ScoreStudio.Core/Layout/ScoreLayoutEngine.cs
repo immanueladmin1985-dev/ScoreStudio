@@ -178,6 +178,7 @@ public static partial class ScoreLayoutEngine
         var lyricSize = LyricSize(project, options);
         var prepared = NotePreparation.Prepare(project, measures.Count, clefs, lyricSize / sp);
         var pendingTies = new List<PendingTie>();
+        var pendingSpans = new PendingSpans();
         var nameIndent = PartNameIndent(project);
         var planned = PlanSystems(measures, prepared, allSlots, contentLeft, contentRight, nameIndent, options, project.Engraving is not null);
 
@@ -196,7 +197,7 @@ public static partial class ScoreLayoutEngine
             // Draw the system with its top line at 0 first, to see how far chord symbols, brackets and lyrics reach.
             var scratch = new PageLayout { Number = page.Number, Width = pageWidth, Height = pageHeight };
             var drawn = DrawSystem(scratch, project, planned[i], i == 0, i == planned.Count - 1, slots, clefs, measures, prepared, 0, options,
-                lyricSize, pendingTies);
+                lyricSize, pendingTies, pendingSpans);
             var (above, below) = VerticalExtent(scratch.Items, sp);
 
             // With the source's layout, systems keep the source's distances; otherwise they follow one after another.
@@ -653,7 +654,7 @@ public static partial class ScoreLayoutEngine
     private static SystemLayout DrawSystem(
         PageLayout page, ScoreProject project, PlannedSystem plan, bool isFirstSystem, bool isLastSystem,
         List<StaffSlot> slots, ClefTimeline clefs, List<MeasureInfo> measures, PreparedMeasure[] prepared, double top, LayoutOptions options,
-        double lyricSize, List<PendingTie> pendingTies)
+        double lyricSize, List<PendingTie> pendingTies, PendingSpans pendingSpans)
     {
         var sp = options.StaffSpace;
         var items = page.Items;
@@ -745,6 +746,7 @@ public static partial class ScoreLayoutEngine
         var placed = new List<PlacedChord>();
         var symbols = new List<PlacedSymbol>();
         var rests = new List<PlacedRest>();
+        var anchors = new Dictionary<int, List<(Rational Time, double X)>>();
         var x = left + plan.HeaderWidth;
         for (var k = 0; k < plan.MeasureCount; k++)
         {
@@ -783,7 +785,7 @@ public static partial class ScoreLayoutEngine
                     DrawTimeSignature(items, info, prefixX, staffTops, sp);
             }
 
-            DrawMeasureNotes(items, prepared[index], slots, staffTops, measureLeft + planned.Prefix, measureRight, planned, sp, placed, index, symbols, rests, page.Chords);
+            DrawMeasureNotes(items, prepared[index], slots, staffTops, measureLeft + planned.Prefix, measureRight, planned, sp, placed, index, symbols, rests, page.Chords, anchors);
 
             var kind = isLastSystem && k == plan.MeasureCount - 1 ? BarlineKind.Final : BarlineKind.Normal;
             if (info.RepeatEnd) kind = BarlineKind.EndRepeat;
@@ -793,10 +795,13 @@ public static partial class ScoreLayoutEngine
             x = measureRight;
         }
 
+        DrawArticulations(items, placed, rests, staffTops, sp);
         DrawOctaveLines(items, placed, staffTops, sp);
         DrawTies(items, placed, slots, staffTops, left + plan.HeaderWidth, right, pendingTies, sp);
+        DrawSlurs(items, project, plan, placed, slots, staffTops, left + plan.HeaderWidth, right, pendingSpans, sp);
         DrawLyrics(items, placed, rests, staffTops, right, lyricSize, TextMetrics.IsSerifFamily(project.Engraving?.LyricFontFamily), sp);
         var symbolTops = DrawChordSymbols(items, symbols, placed, staffTops, lyricSize, sp);
+        DrawDirectionsAndHairpins(items, project, plan, measureLayouts, placed, slots, staffTops, anchors, symbolTops, left + plan.HeaderWidth, right, pendingSpans, sp);
         DrawVoltas(items, plan, measures, measureLayouts, placed, staffTops[0], symbolTops.TryGetValue(0, out var symbolTop) ? symbolTop : double.MaxValue, sp);
 
         return new SystemLayout
@@ -850,14 +855,15 @@ public static partial class ScoreLayoutEngine
     private static void DrawMeasureNotes(
         List<DrawItem> items, PreparedMeasure measure, List<StaffSlot> slots, double[] staffTops,
         double contentLeft, double measureRight, PlannedMeasure plan, double sp, List<PlacedChord> placed, int measureIndex,
-        List<PlacedSymbol> symbols, List<PlacedRest> rests, List<ChordBox> boxes)
+        List<PlacedSymbol> symbols, List<PlacedRest> rests, List<ChordBox> boxes, Dictionary<int, List<(Rational Time, double X)>> measureAnchors)
     {
         if (measure.IsEmpty)
         {
-            PlaceChordSymbols(measure, slots, measureIndex, new List<(Rational, double)>
+            measureAnchors[measureIndex] = new List<(Rational, double)>
             {
                 (Rational.Zero, contentLeft + MeasureLeftPadding * sp), (measure.Length, measureRight - MeasureLeftPadding * sp),
-            }, symbols);
+            };
+            PlaceChordSymbols(measure, slots, measureIndex, measureAnchors[measureIndex], symbols);
             return;
         }
 
@@ -882,6 +888,7 @@ public static partial class ScoreLayoutEngine
         var anchors = measure.Onsets.Select(t => (t, onsetX[t])).ToList();
         if (anchors[0].t.Sign > 0) anchors.Insert(0, (Rational.Zero, contentLeft + lead * unit));
         anchors.Add((measure.Length, x));
+        measureAnchors[measureIndex] = anchors;
         PlaceChordSymbols(measure, slots, measureIndex, anchors, symbols);
 
         // Mid-measure clef changes sit at the start of the room reserved before their onset.
@@ -904,7 +911,7 @@ public static partial class ScoreLayoutEngine
                     ? (contentLeft + measureRight - Smufl.RestWidth(NoteType.Whole) * sp) / 2
                     : onsetX[chord.Start];
                 var (restTop, restBottom) = DrawRest(items, chord, restX, staffTop, sp);
-                rests.Add(new PlacedRest(slotIndex, measureIndex, chord.Start, chord.Voice));
+                rests.Add(new PlacedRest(slotIndex, measureIndex, chord.Start, chord.Voice, chord, restX, restTop, restBottom));
                 var restType = chord.IsMeasureRest ? NoteType.Whole : chord.Value.Type;
                 boxes.Add(new ChordBox(chord.PartIndex, chord.Staff, chord.Voice, measureIndex, chord.Start, true,
                     restX, restTop, restX + Smufl.RestWidth(restType) * sp, restBottom));
