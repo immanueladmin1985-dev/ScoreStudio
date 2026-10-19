@@ -51,7 +51,7 @@ public sealed class KeyMapTests
         Assert.Null(map.Find(KeyScope.Speedy, K("C")));
 
         // Every command either runs on the editor or is one the window does.
-        var windowCommands = new[] { EditorCommand.LyricBox, EditorCommand.ChordBox, EditorCommand.MouseEntry };
+        var windowCommands = new[] { EditorCommand.LyricBox, EditorCommand.ChordBox, EditorCommand.MouseEntry, EditorCommand.ExpressionText, EditorCommand.TempoMark };
         foreach (var command in Enum.GetValues<EditorCommand>())
             Assert.Equal(windowCommands.Contains(command), CommandRunner.Run(new ScoreEditor(ScoreProject.CreateNew()), command) is null);
     }

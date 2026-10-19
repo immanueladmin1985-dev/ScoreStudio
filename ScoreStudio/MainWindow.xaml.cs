@@ -76,7 +76,6 @@ public partial class MainWindow : Window
     /// <summary>Finale's tools ScoreStudio does not have yet: shown greyed out in the palette and the tools menu.</summary>
     private static readonly (string Label, string Name)[] UnsupportedTools =
     {
-        ("표현", "표현 도구(셈여림·글자 지시)"), ("아티큘", "아티큘레이션 도구"), ("이음줄", "스마트 도형 도구(이음줄·크레셴도)"),
         ("반복", "반복 도구"), ("마디", "마디 도구"), ("텍스트", "텍스트 도구"), ("잇단", "잇단음표 도구(입력할 때 Ctrl+3)"),
     };
 
@@ -89,6 +88,9 @@ public partial class MainWindow : Window
         EditorTool.Chord => "코드",
         EditorTool.KeySignature => "조표",
         EditorTool.TimeSignature => "박자표",
+        EditorTool.Articulation => "아티큘",
+        EditorTool.Expression => "표현",
+        EditorTool.SmartShape => "이음줄",
         _ => "음자리표",
     };
 
@@ -101,6 +103,9 @@ public partial class MainWindow : Window
         EditorTool.Chord => "누른 자리에 코드 이름을 넣습니다(예: Am7, Bb/D).",
         EditorTool.KeySignature => "마디를 누르면 그 마디부터의 조표를 고릅니다.",
         EditorTool.TimeSignature => "마디를 누르면 그 마디부터의 박자표를 고릅니다.",
+        EditorTool.Articulation => "음표를 누르면 아티큘레이션을 고릅니다. 음표를 고른 뒤 S 스타카토, A 악센트, T 테누토, V 마르카토, W 스타카티시모, F 페르마타, Delete 지우기.",
+        EditorTool.Expression => "음표를 누르면 셈여림·글자를 고릅니다. 음표를 고른 뒤 1 pp, 2 p, 3 mp, 4 mf, 5 f, 6 ff, 7 sfz, 8 fp, T 글자, M 메트로놈, Delete 지우기.",
+        EditorTool.SmartShape => "시작 음표와 끝 음표를 차례로 누르면 이음줄을 넣습니다. S 이음줄, < 크레셴도, > 디크레셴도로 고르고, 시작 음표를 고른 뒤 Delete로 지웁니다.",
         _ => "음표나 입력 위치를 누르면 그 자리의 음자리표를 고릅니다.",
     };
 
@@ -137,6 +142,7 @@ public partial class MainWindow : Window
         try
         {
             _tool = tool;
+            _editor.CancelShape();
             foreach (var button in ToolPalette.Items.OfType<RadioButton>()) button.IsChecked = button.Tag is EditorTool t && t == tool;
             foreach (var item in ToolMenu.Items.OfType<MenuItem>()) item.IsChecked = item.Tag is EditorTool t && t == tool;
             SetMouseEntry(tool == EditorTool.Simple);
@@ -255,8 +261,27 @@ public partial class MainWindow : Window
                 if (_tool == EditorTool.Simple) SetMouseEntry(!_mouseEntry);
                 else SetTool(EditorTool.Simple);
                 break;
+            case EditorCommand.ExpressionText:
+                if (MarkPrompts.AskText(this) is { } text) RunEdit(ed => ed.SetExpressionText(text.Text, text.Italic, text.Bold));
+                break;
+            case EditorCommand.TempoMark:
+                if (MarkPrompts.AskTempo(this) is { } tempo) RunEdit(ed => ed.SetTempo(tempo.Unit, tempo.Dots, tempo.PerMinute));
+                break;
         }
     }
+
+    /// <summary>The Articulation tool's choices for the clicked note, as Finale's articulation selection shows them.</summary>
+    private IEnumerable<MenuItem> ArticulationItems() =>
+        Enum.GetValues<Articulation>().Select(a => CommandItem(ScoreEditor.ArticulationName(a), () => RunEdit(ed => ed.ToggleArticulation(a))))
+            .Append(CommandItem("모두 지우기", () => RunEdit(ed => ed.ClearArticulations())));
+
+    /// <summary>The Expression tool's choices for the clicked place: dynamics, text, metronome mark, clearing.</summary>
+    private IEnumerable<MenuItem> ExpressionItems() =>
+        new[] { "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff", "sfz", "sf", "fp", "fz" }
+            .Select(d => CommandItem(d, () => RunEdit(ed => ed.SetDynamic(d))))
+            .Append(CommandItem("글자 넣기...", () => RunWindowCommand(EditorCommand.ExpressionText)))
+            .Append(CommandItem("메트로놈 표시 넣기...", () => RunWindowCommand(EditorCommand.TempoMark)))
+            .Append(CommandItem("이 자리의 셈여림·글자 지우기", () => RunEdit(ed => ed.ClearExpressions())));
 
     private void KeySettings_Click(object sender, RoutedEventArgs e)
     {
@@ -592,7 +617,7 @@ public partial class MainWindow : Window
     private void KeyHelp_Click(object sender, RoutedEventArgs e)
     {
         var text = new StringBuilder();
-        foreach (var scope in new[] { KeyScope.Speedy, KeyScope.Simple, KeyScope.Common })
+        foreach (var scope in EditorTools.ScopeOrder)
         {
             text.AppendLine($"[{EditorTools.ScopeName(scope)}]");
             foreach (var (_, command, keys) in _keys.All().Where(b => b.Scope == scope && b.Keys.Count > 0))
@@ -739,6 +764,15 @@ public partial class MainWindow : Window
                 break;
             case EditorTool.Clef:
                 ShowSignatureMenu(ClefItems());
+                break;
+            case EditorTool.Articulation when chord is not null:
+                ShowSignatureMenu(ArticulationItems());
+                break;
+            case EditorTool.Expression:
+                ShowSignatureMenu(ExpressionItems());
+                break;
+            case EditorTool.SmartShape when chord is not null:
+                ShowEdit(_editor.ClickShape(new EditPosition(chord.PartIndex, chord.Staff, chord.Voice, chord.MeasureIndex, chord.Start)), before);
                 break;
         }
     }
@@ -1119,7 +1153,7 @@ public partial class MainWindow : Window
     private void About_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(this,
-            "ScoreStudio 개발 버전\n\n지원: 프로젝트 저장/열기, 악보 화면(오선·음자리표·조표·박자표·마디선·음표·쉼표·빔·붙임줄·잇단음표·가사·코드 이름·도돌이표·볼타·음자리표 변경·옥타브 기호, 여러 페이지, 확대/축소), MusicXML 가져오기·내보내기, PDF·그림에서 악보 인식(Audiveris), 키보드와 마우스로 음표·쉼표 입력과 고치기, 조표·박자표·음자리표 바꾸기, 잇단음표·가사·코드 이름 입력(실행 취소 포함)\n가져와 표시·저장·내보내지만 아직 직접 넣을 수 없음: 셈여림, 크레셴도, 이음줄, 아티큘레이션, 글자 지시·메트로놈\n아직 가져오지 않음: 장식음 기호, 페달, 세뇨·코다 등(가져오기 결과 창에 경고로 표시)\n아직 지원하지 않음: MUSX 변환, PDF 출력",
+            "ScoreStudio 개발 버전\n\n지원: 프로젝트 저장/열기, 악보 화면(오선·음자리표·조표·박자표·마디선·음표·쉼표·빔·붙임줄·잇단음표·가사·코드 이름·도돌이표·볼타·음자리표 변경·옥타브 기호, 여러 페이지, 확대/축소), MusicXML 가져오기·내보내기, PDF·그림에서 악보 인식(Audiveris), 키보드와 마우스로 음표·쉼표 입력과 고치기, 조표·박자표·음자리표 바꾸기, 잇단음표·가사·코드 이름 입력(실행 취소 포함), 셈여림·크레셴도·이음줄·아티큘레이션·글자 지시·메트로놈 넣기(표현·아티큘레이션·스마트 도형 도구)\n아직 가져오지 않음: 장식음 기호, 페달, 세뇨·코다 등(가져오기 결과 창에 경고로 표시)\n아직 지원하지 않음: MUSX 변환, PDF 출력",
             "개발 상태", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 

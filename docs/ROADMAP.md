@@ -128,7 +128,7 @@
 2. Finale 기호: 셈여림, 글자 지시, 메트로놈, 크레셴도, 이음줄, 아티큘레이션, 페르마타 — 설계와 수용 기준: `docs/SPRINT_FINALE_MARKS.md`
    - [x] 2-A: 데이터 모델(스키마 17), MusicXML 가져오기·내보내기, 저장·열기 (자동 테스트, 스키마 검사)
    - [x] 2-B: 악보 화면에 그리기 (자동 테스트, SVG 미리보기로 확인, CI 미리보기 `preview-musicxml-finale-marks.png`)
-   - [ ] 2-C: 도구로 넣고 지우기 (Finale의 Articulation·Expression·Smart Shape 도구)
+   - [x] 2-C: 도구로 넣고 지우기 (Finale의 Articulation·Expression·Smart Shape 도구, 자동 테스트. 단축키 기본값은 추정이므로 사용자 확인 필요)
    - [ ] Windows PC에서 Finale 파일("다윗의 노래")로 경고가 줄었는지 확인
 3. [ ] `.musx` 열기 (별도 변환기, 사용자가 제공한 .musx 파일로 검증)
 4. [ ] Finale식 조작 맞추기 (사용자가 써 본 결과 반영)

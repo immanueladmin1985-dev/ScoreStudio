@@ -89,7 +89,7 @@ public sealed class KeySettingsWindow : Window
 
     private IEnumerable<Row> Rows()
     {
-        foreach (var scope in new[] { KeyScope.Speedy, KeyScope.Simple, KeyScope.Common })
+        foreach (var scope in EditorTools.ScopeOrder)
         {
             foreach (var info in KeyMap.Commands)
             {

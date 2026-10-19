@@ -1,5 +1,6 @@
 using System.Text;
 using ScoreStudio.Layout;
+using ScoreStudio.Models;
 
 namespace ScoreStudio.Editing;
 
@@ -20,14 +21,22 @@ public enum EditorCommand
 
     // Finale has these; ScoreStudio does not yet.
     BreakBeam, GraceNote, HideEntry,
+
+    // Articulation, Expression and Smart Shape tools (docs/SPRINT_FINALE_MARKS.md, 2-C): Finale's metatool keys.
+    ArticulationStaccato, ArticulationStaccatissimo, ArticulationAccent, ArticulationMarcato, ArticulationTenuto, ArticulationFermata, ClearArticulations,
+    DynamicPP, DynamicP, DynamicMP, DynamicMF, DynamicF, DynamicFF, DynamicSfz, DynamicFp, ExpressionText, TempoMark, ClearExpressions,
+    ShapeSlur, ShapeCrescendo, ShapeDiminuendo, ClearShapes,
 }
 
-/// <summary>Where a key works: everywhere, or only with the Speedy or Simple Entry tool.</summary>
+/// <summary>Where a key works: everywhere, or only with one tool.</summary>
 public enum KeyScope
 {
     Common,
     Speedy,
     Simple,
+    Articulation,
+    Expression,
+    SmartShape,
 }
 
 /// <summary>A command's name and group in Korean, and whether ScoreStudio can do it yet.</summary>
@@ -171,6 +180,28 @@ public sealed class KeyMap
         new(EditorCommand.BreakBeam, "음표", "빔 끊기·잇기", Supported: false),
         new(EditorCommand.GraceNote, "음표", "꾸밈음", Supported: false),
         new(EditorCommand.HideEntry, "음표", "음표 숨기기", Supported: false),
+        new(EditorCommand.ArticulationStaccato, "아티큘레이션", "스타카토"),
+        new(EditorCommand.ArticulationStaccatissimo, "아티큘레이션", "스타카티시모"),
+        new(EditorCommand.ArticulationAccent, "아티큘레이션", "악센트"),
+        new(EditorCommand.ArticulationMarcato, "아티큘레이션", "마르카토(강한 악센트)"),
+        new(EditorCommand.ArticulationTenuto, "아티큘레이션", "테누토"),
+        new(EditorCommand.ArticulationFermata, "아티큘레이션", "페르마타"),
+        new(EditorCommand.ClearArticulations, "아티큘레이션", "아티큘레이션 모두 지우기"),
+        new(EditorCommand.DynamicPP, "셈여림", "pp"),
+        new(EditorCommand.DynamicP, "셈여림", "p"),
+        new(EditorCommand.DynamicMP, "셈여림", "mp"),
+        new(EditorCommand.DynamicMF, "셈여림", "mf"),
+        new(EditorCommand.DynamicF, "셈여림", "f"),
+        new(EditorCommand.DynamicFF, "셈여림", "ff"),
+        new(EditorCommand.DynamicSfz, "셈여림", "sfz"),
+        new(EditorCommand.DynamicFp, "셈여림", "fp"),
+        new(EditorCommand.ExpressionText, "표현", "글자 넣기(dolce, rit. 등)..."),
+        new(EditorCommand.TempoMark, "표현", "메트로놈 표시 넣기..."),
+        new(EditorCommand.ClearExpressions, "표현", "그 자리의 셈여림·글자 지우기"),
+        new(EditorCommand.ShapeSlur, "스마트 도형", "이음줄 고르기"),
+        new(EditorCommand.ShapeCrescendo, "스마트 도형", "크레셴도 고르기"),
+        new(EditorCommand.ShapeDiminuendo, "스마트 도형", "디크레셴도 고르기"),
+        new(EditorCommand.ClearShapes, "스마트 도형", "음표에서 시작하는 이음줄·크레셴도 지우기"),
     };
 
     public static CommandInfo Info(EditorCommand command) => Commands.First(c => c.Command == command);
@@ -240,6 +271,28 @@ public sealed class KeyMap
         Bind(KeyScope.Simple, EditorCommand.SemitoneDown, K("OemMinus"), K("Subtract"));
         Bind(KeyScope.Simple, EditorCommand.ToRest, K("Back"));
         Bind(KeyScope.Simple, EditorCommand.MouseEntry, K("N"));
+
+        // Finale's metatools for the marks tools, as far as they could be checked (docs/SPRINT_FINALE_MARKS.md, 2-C).
+        Bind(KeyScope.Articulation, EditorCommand.ArticulationStaccato, K("S"));
+        Bind(KeyScope.Articulation, EditorCommand.ArticulationStaccatissimo, K("W"));
+        Bind(KeyScope.Articulation, EditorCommand.ArticulationAccent, K("A"));
+        Bind(KeyScope.Articulation, EditorCommand.ArticulationMarcato, K("V"));
+        Bind(KeyScope.Articulation, EditorCommand.ArticulationTenuto, K("T"));
+        Bind(KeyScope.Articulation, EditorCommand.ArticulationFermata, K("F"));
+        Bind(KeyScope.Articulation, EditorCommand.ClearArticulations, K("Delete"), K("Back"));
+        var dynamicKeys = new[]
+        {
+            EditorCommand.DynamicPP, EditorCommand.DynamicP, EditorCommand.DynamicMP, EditorCommand.DynamicMF,
+            EditorCommand.DynamicF, EditorCommand.DynamicFF, EditorCommand.DynamicSfz, EditorCommand.DynamicFp,
+        };
+        for (var i = 0; i < dynamicKeys.Length; i++) Bind(KeyScope.Expression, dynamicKeys[i], K($"D{i + 1}"), K($"NumPad{i + 1}"));
+        Bind(KeyScope.Expression, EditorCommand.ExpressionText, K("T"));
+        Bind(KeyScope.Expression, EditorCommand.TempoMark, K("M"));
+        Bind(KeyScope.Expression, EditorCommand.ClearExpressions, K("Delete"), K("Back"));
+        Bind(KeyScope.SmartShape, EditorCommand.ShapeSlur, K("S"));
+        Bind(KeyScope.SmartShape, EditorCommand.ShapeCrescendo, K("OemComma", shift: true));
+        Bind(KeyScope.SmartShape, EditorCommand.ShapeDiminuendo, K("OemPeriod", shift: true));
+        Bind(KeyScope.SmartShape, EditorCommand.ClearShapes, K("Delete"), K("Back"));
         return map;
     }
 
@@ -381,13 +434,46 @@ public static class CommandRunner
         EditorCommand.ChooseSixteenth => editor.SetInputValue(NoteType.Sixteenth, 0),
         EditorCommand.ChooseThirtySecond => editor.SetInputValue(NoteType.ThirtySecond, 0),
         EditorCommand.EnterRest => editor.EnterRest(),
+        EditorCommand.ArticulationStaccato => editor.ToggleArticulation(Articulation.Staccato),
+        EditorCommand.ArticulationStaccatissimo => editor.ToggleArticulation(Articulation.Staccatissimo),
+        EditorCommand.ArticulationAccent => editor.ToggleArticulation(Articulation.Accent),
+        EditorCommand.ArticulationMarcato => editor.ToggleArticulation(Articulation.Marcato),
+        EditorCommand.ArticulationTenuto => editor.ToggleArticulation(Articulation.Tenuto),
+        EditorCommand.ArticulationFermata => editor.ToggleArticulation(Articulation.Fermata),
+        EditorCommand.ClearArticulations => editor.ClearArticulations(),
+        EditorCommand.DynamicPP => editor.SetDynamic("pp"),
+        EditorCommand.DynamicP => editor.SetDynamic("p"),
+        EditorCommand.DynamicMP => editor.SetDynamic("mp"),
+        EditorCommand.DynamicMF => editor.SetDynamic("mf"),
+        EditorCommand.DynamicF => editor.SetDynamic("f"),
+        EditorCommand.DynamicFF => editor.SetDynamic("ff"),
+        EditorCommand.DynamicSfz => editor.SetDynamic("sfz"),
+        EditorCommand.DynamicFp => editor.SetDynamic("fp"),
+        EditorCommand.ClearExpressions => editor.ClearExpressions(),
+        EditorCommand.ShapeSlur => ChooseShape(editor, ShapeKind.Slur),
+        EditorCommand.ShapeCrescendo => ChooseShape(editor, ShapeKind.Crescendo),
+        EditorCommand.ShapeDiminuendo => ChooseShape(editor, ShapeKind.Diminuendo),
+        EditorCommand.ClearShapes => editor.ClearShapes(),
         EditorCommand.BreakBeam or EditorCommand.GraceNote or EditorCommand.HideEntry =>
             EditResult.Refused($"'{KeyMap.Info(command).Name}'은(는) 아직 지원하지 않습니다."),
         _ => null,
     };
 
+    /// <summary>Chooses what the Smart Shape tool draws from the next chord clicked to the one after.</summary>
+    private static EditResult ChooseShape(ScoreEditor editor, ShapeKind shape)
+    {
+        editor.Shape = shape;
+        return EditResult.Ok($"{ScoreEditor.ShapeName(shape)}을(를) 골랐습니다. 시작 음표와 끝 음표를 차례로 누르세요.");
+    }
+
     private static EditResult Cancel(ScoreEditor editor)
     {
+        if (editor.ShapeStart is not null)
+        {
+            editor.CancelShape();
+            return EditResult.Ok("이음줄·크레셴도 넣기를 취소했습니다.");
+        }
+
         if (editor.PendingTuplet is { } pending)
         {
             editor.CancelTuplet();
@@ -410,6 +496,9 @@ public enum EditorTool
     KeySignature,
     TimeSignature,
     Clef,
+    Articulation,
+    Expression,
+    SmartShape,
 }
 
 public static class EditorTools
@@ -419,7 +508,16 @@ public static class EditorTools
     {
         EditorTool.Speedy => KeyScope.Speedy,
         EditorTool.Simple => KeyScope.Simple,
+        EditorTool.Articulation => KeyScope.Articulation,
+        EditorTool.Expression => KeyScope.Expression,
+        EditorTool.SmartShape => KeyScope.SmartShape,
         _ => KeyScope.Common,
+    };
+
+    /// <summary>Scopes in the order the key settings and key list show them.</summary>
+    public static readonly IReadOnlyList<KeyScope> ScopeOrder = new[]
+    {
+        KeyScope.Speedy, KeyScope.Simple, KeyScope.Articulation, KeyScope.Expression, KeyScope.SmartShape, KeyScope.Common,
     };
 
     public static string Name(EditorTool tool) => tool switch
@@ -431,6 +529,9 @@ public static class EditorTools
         EditorTool.Chord => "코드 도구",
         EditorTool.KeySignature => "조표 도구",
         EditorTool.TimeSignature => "박자표 도구",
+        EditorTool.Articulation => "아티큘레이션 도구",
+        EditorTool.Expression => "표현 도구(셈여림·글자·메트로놈)",
+        EditorTool.SmartShape => "스마트 도형 도구(이음줄·크레셴도)",
         _ => "음자리표 도구",
     };
 
@@ -438,6 +539,9 @@ public static class EditorTools
     {
         KeyScope.Speedy => "Speedy Entry",
         KeyScope.Simple => "Simple Entry",
+        KeyScope.Articulation => "아티큘레이션",
+        KeyScope.Expression => "표현",
+        KeyScope.SmartShape => "스마트 도형",
         _ => "공통",
     };
 }
