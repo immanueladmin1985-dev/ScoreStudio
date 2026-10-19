@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
-<!-- ScoreStudio sample: symbols that ScoreStudio does not import yet, to check the import warnings. -->
+<!-- ScoreStudio sample: symbols that ScoreStudio does not import yet, to check the import warnings. Since schema 17 the
+     dynamic, slur, staccato and fermata are imported; the pedal mark, trill and breath mark are still warned about. -->
 <score-partwise version="4.0">
   <work><work-title>경고 확인용 악보</work-title></work>
   <part-list>
@@ -15,6 +16,7 @@
       </attributes>
       <barline location="left"><repeat direction="forward"/></barline>
       <direction placement="below"><direction-type><dynamics><p/></dynamics></direction-type></direction>
+      <direction placement="below"><direction-type><pedal type="start"/></direction-type></direction>
       <harmony><root><root-step>C</root-step></root><kind>major</kind></harmony>
       <note><grace/><pitch><step>D</step><octave>5</octave></pitch><voice>1</voice><type>eighth</type></note>
       <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><tie type="start"/><voice>1</voice><type>half</type>
@@ -24,7 +26,7 @@
       <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><tie type="stop"/><voice>1</voice><type>quarter</type>
         <notations><tied type="stop"/><articulations><staccato/></articulations></notations></note>
       <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
-        <notations><slur type="stop" number="1"/><fermata/></notations>
+        <notations><slur type="stop" number="1"/><fermata/><ornaments><trill-mark/></ornaments><articulations><breath-mark/></articulations></notations>
         <lyric number="1"><syllabic>end</syllabic><text>래</text></lyric></note>
     </measure>
     <measure number="2">

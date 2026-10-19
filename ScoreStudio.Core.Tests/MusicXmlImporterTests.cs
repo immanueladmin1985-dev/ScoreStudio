@@ -30,6 +30,44 @@ public sealed class MusicXmlImporterTests : IDisposable
     private static string? Verse1(ScoreEvent e) => e.Lyrics.FirstOrDefault(l => l.Verse == 1)?.Text;
 
     [Fact]
+    public void FinaleMarks_DynamicsWordsTempoHairpinsSlursAndArticulationsMatchTheSource()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("finale-marks.musicxml"));
+        Assert.Empty(result.Warnings);
+        var (m1, m2) = (result.Project.Parts[0].Measures[0], result.Project.Parts[0].Measures[1]);
+
+        string Describe(ScoreDirection d) =>
+            $"{d.Kind} staff {d.Staff} @{d.PositionNumerator}/{d.PositionDenominator} '{d.Text}' above {d.Above?.ToString() ?? "-"} y {d.Y?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"}"
+            + (d.Italic ? " italic" : "") + (d.Kind == DirectionKind.Tempo ? $" {d.BeatUnit}{new string('.', d.BeatUnitDots)}={d.PerMinute}" : "");
+        Assert.Equal(new[]
+        {
+            "Words staff 0 @0/1 'dolce' above True y 3.5 italic",
+            "Tempo staff 0 @0/1 '' above True y - quarter.=60",
+            "Dynamic staff 0 @0/1 'mf' above False y -8",
+        }, m1.Directions.Select(Describe));
+        Assert.Equal(new[]
+        {
+            "Dynamic staff 0 @5/2 'sfz' above False y -",
+            "Dynamic staff 1 @0/1 'sempre p' above False y -",
+        }, m2.Directions.Select(Describe));
+
+        string Span(ScoreHairpin h) =>
+            $"{(h.Crescendo ? "cresc" : "dim")} staff {h.Staff} @{h.PositionNumerator}/{h.PositionDenominator} +{h.EndMeasureOffset} @{h.EndPositionNumerator}/{h.EndPositionDenominator} y {h.Y?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-"}";
+        Assert.Equal("cresc staff 0 @2/1 +1 @0/1 y -7.5", Span(Assert.Single(m1.Hairpins)));
+        Assert.Equal("dim staff 1 @0/1 +0 @4/1 y -", Span(Assert.Single(m2.Hairpins)));
+
+        string Slur(ScoreSlur s) =>
+            $"{s.Staff}/{s.Voice} @{s.PositionNumerator} → +{s.EndMeasureOffset} {s.EndStaff}/{s.EndVoice} @{s.EndPositionNumerator} above {s.Above?.ToString() ?? "-"}";
+        Assert.Equal("0/1 @0 → +1 0/1 @0 above True", Slur(Assert.Single(m1.Slurs)));
+        // The stop on the upper staff comes before the start on the lower staff in the file.
+        Assert.Equal("1/5 @0 → +0 0/1 @2 above False", Slur(Assert.Single(m2.Slurs)));
+
+        Assert.Equal(new[] { "Staccato", "Accent", "Marcato,Tenuto", "Staccato,Tenuto", "" },
+            m1.Events.Select(e => string.Join(",", e.Articulations)));
+        Assert.Equal(new[] { Articulation.Staccatissimo, Articulation.Fermata }, m2.Events[0].Articulations);
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -106,11 +144,10 @@ public sealed class MusicXmlImporterTests : IDisposable
         Assert.Equal(
             new Dictionary<string, int>
             {
-                ["셈여림"] = 1,
+                ["페달"] = 1,
                 ["꾸밈음"] = 1,
-                ["이음줄"] = 1,
-                ["아티큘레이션(스타카토, 악센트 등)"] = 1,
-                ["페르마타"] = 1,
+                ["장식음 기호(트릴, 턴 등)"] = 1,
+                ["기타 아티큘레이션(숨표, 중간 휴지 등)"] = 1,
             },
             warnings);
         Assert.Equal("플루트 1마디", result.Warnings.First(w => w.Message == "꾸밈음").FirstLocation);
@@ -119,6 +156,13 @@ public sealed class MusicXmlImporterTests : IDisposable
         Assert.Equal(ClefType.Treble, part.Staves.Single().Clef);
         Assert.DoesNotContain(part.Measures.SelectMany(m => m.Events), e => e.NotationSpelling == "D5");
         Assert.Equal(new[] { "노", null, "래" }, part.Measures[0].Events.Select(Verse1));
+
+        // Imported since schema version 17: dynamics, slurs, articulations and fermatas.
+        Assert.Equal("p", Assert.Single(part.Measures[0].Directions).Text);
+        var slur = Assert.Single(part.Measures[0].Slurs);
+        Assert.Equal((0, 0, 3), (slur.PositionNumerator, slur.EndMeasureOffset, slur.EndPositionNumerator));
+        Assert.Equal(new[] { Articulation.Staccato }, part.Measures[0].Events[1].Articulations);
+        Assert.Equal(new[] { Articulation.Fermata }, part.Measures[0].Events[2].Articulations);
 
         // Imported since schema version 4: ties, later verses, hyphens, chord symbols, repeats.
         var first = part.Measures[0].Events[0];

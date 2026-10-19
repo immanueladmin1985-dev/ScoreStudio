@@ -10,6 +10,45 @@ public static partial class MusicXmlExporter
 {
     private static readonly string[] TypeNames = { "breve", "whole", "half", "quarter", "eighth", "16th", "32nd", "64th" };
 
+    /// <summary>Dynamics MusicXML has an element for; any other dynamic text is written as &lt;other-dynamics&gt;.</summary>
+    private static readonly HashSet<string> DynamicElements = new(StringComparer.Ordinal)
+    {
+        "p", "pp", "ppp", "pppp", "ppppp", "pppppp", "f", "ff", "fff", "ffff", "fffff", "ffffff",
+        "mp", "mf", "sf", "sfp", "sfpp", "fp", "rf", "rfz", "sfz", "sffz", "fz", "n", "pf", "sfzp",
+    };
+
+    /// <summary>MusicXML elements for each articulation; a fermata is a notation of its own.</summary>
+    private static string ArticulationElement(Articulation articulation) => articulation switch
+    {
+        Articulation.Staccato => "staccato",
+        Articulation.Staccatissimo => "staccatissimo",
+        Articulation.Accent => "accent",
+        Articulation.Marcato => "strong-accent",
+        Articulation.Tenuto => "tenuto",
+        _ => "fermata",
+    };
+
+    /// <summary>
+    /// Numbers for spans (slurs, hairpins) read back by number: the lowest number not taken by a span whose measures
+    /// overlap. Spans that only meet in one measure get different numbers too, because the file lists the staves of a
+    /// measure one after another and a stop on a lower staff may come after a start on an upper one.
+    /// </summary>
+    private static List<string> SpanNumbers(IReadOnlyList<(int Start, int End)> spans)
+    {
+        var numbers = new string[spans.Count];
+        var active = new List<(int End, int Number)>();
+        foreach (var i in Enumerable.Range(0, spans.Count).OrderBy(i => spans[i].Start))
+        {
+            active.RemoveAll(a => a.End < spans[i].Start);
+            var number = 1;
+            while (active.Any(a => a.Number == number)) number++;
+            active.Add((spans[i].End, number));
+            numbers[i] = number.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return numbers.ToList();
+    }
+
     /// <summary>
     /// Writes one part. Each measure holds its staves one after another and, within a staff, one voice after another;
     /// &lt;backup&gt; and &lt;forward&gt; move between them. Chord symbols, clef changes and octave lines of a staff are
@@ -29,6 +68,12 @@ public static partial class MusicXmlExporter
         /// <summary>Octave-line starts (shift ≠ 0) and stops (shift 0, with the size that stops) by measure index.</summary>
         private readonly Dictionary<int, List<(int Staff, Rational Position, int Shift, int Size)>> _octaveLines = new();
 
+        /// <summary>Slur starts and stops on the first note of chords.</summary>
+        private readonly Dictionary<ScoreEvent, List<XElement>> _slurMarks = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>Hairpin starts and stops by measure index: staff, time, the &lt;wedge&gt; and the direction's placement.</summary>
+        private readonly Dictionary<int, List<(int Staff, Rational Position, XElement Wedge, bool? Above)>> _wedges = new();
+
         /// <summary>Measure index at which each volta's bracket ends.</summary>
         private readonly Dictionary<int, ScoreVolta> _voltaEnds = new();
 
@@ -45,6 +90,8 @@ public static partial class MusicXmlExporter
             _divisions = Divisions(part);
             FindTieStops();
             FindOctaveLines();
+            FindSlurs();
+            FindHairpins();
             for (var m = 0; m < part.Measures.Count; m++)
             {
                 if (part.Measures[m].Volta is { } volta)
@@ -77,6 +124,12 @@ public static partial class MusicXmlExporter
                 foreach (var t in measure.Tuplets) { Add(t.PositionDenominator); Add(t.DurationDenominator); }
                 foreach (var c in measure.ChordSymbols) Add(new Rational(c.PositionNumerator, c.PositionDenominator).Denominator);
                 foreach (var c in measure.ClefChanges) Add(new Rational(c.PositionNumerator, c.PositionDenominator).Denominator);
+                foreach (var d in measure.Directions) Add(new Rational(d.PositionNumerator, d.PositionDenominator).Denominator);
+                foreach (var h in measure.Hairpins)
+                {
+                    Add(new Rational(h.PositionNumerator, h.PositionDenominator).Denominator);
+                    Add(new Rational(h.EndPositionNumerator, h.EndPositionDenominator).Denominator);
+                }
             }
 
             return divisions;
@@ -147,6 +200,76 @@ public static partial class MusicXmlExporter
                 if (!_octaveLines.TryGetValue(measure, out var lines)) _octaveLines[measure] = lines = new();
                 lines.Add((staff, position, shift, Math.Abs(size) >= 2 ? 15 : 8));
             }
+        }
+
+        /// <summary>The first note or rest written for a voice's chord at a time, which carries the chord's marks.</summary>
+        private static ScoreEvent? ChordAt(ScoreMeasure measure, int staff, int voice, Rational position) =>
+            measure.Events.FirstOrDefault(e => e.Staff == staff && e.Voice == voice && Start(e) == position);
+
+        private void FindSlurs()
+        {
+            var slurs = new List<(int Measure, ScoreSlur Slur, ScoreEvent First, ScoreEvent Last)>();
+            for (var m = 0; m < _part.Measures.Count; m++)
+            {
+                foreach (var slur in _part.Measures[m].Slurs)
+                {
+                    var end = m + slur.EndMeasureOffset;
+                    var first = ChordAt(_part.Measures[m], slur.Staff, slur.Voice, new Rational(slur.PositionNumerator, slur.PositionDenominator));
+                    var last = end < _part.Measures.Count
+                        ? ChordAt(_part.Measures[end], slur.EndStaff, slur.EndVoice, new Rational(slur.EndPositionNumerator, slur.EndPositionDenominator))
+                        : null;
+                    if (first is null || last is null || ReferenceEquals(first, last))
+                    {
+                        _location = $"{_part.Name} {_part.Measures[m].Number}마디";
+                        Warn("음표를 찾을 수 없는 이음줄은 내보내지 않음");
+                        continue;
+                    }
+
+                    slurs.Add((m, slur, first, last));
+                }
+            }
+
+            var numbers = SpanNumbers(slurs.Select(s => (s.Measure, s.Measure + s.Slur.EndMeasureOffset)).ToList());
+            for (var i = 0; i < slurs.Count; i++)
+            {
+                var start = new XElement("slur", new XAttribute("type", "start"), new XAttribute("number", numbers[i]));
+                if (slurs[i].Slur.Above is { } above) start.Add(new XAttribute("placement", above ? "above" : "below"));
+                Mark(_slurMarks, slurs[i].First, start);
+                Mark(_slurMarks, slurs[i].Last, new XElement("slur", new XAttribute("type", "stop"), new XAttribute("number", numbers[i])));
+            }
+        }
+
+        private void FindHairpins()
+        {
+            var hairpins = new List<(int Measure, ScoreHairpin Hairpin, int End)>();
+            for (var m = 0; m < _part.Measures.Count; m++)
+            {
+                foreach (var hairpin in _part.Measures[m].Hairpins)
+                    hairpins.Add((m, hairpin, Math.Min(_part.Measures.Count - 1, m + hairpin.EndMeasureOffset)));
+            }
+
+            var numbers = SpanNumbers(hairpins.Select(h => (h.Measure, h.End)).ToList());
+            for (var i = 0; i < hairpins.Count; i++)
+            {
+                var (m, hairpin, end) = hairpins[i];
+                var start = new XElement("wedge", new XAttribute("type", hairpin.Crescendo ? "crescendo" : "diminuendo"), new XAttribute("number", numbers[i]));
+                if (hairpin.Y is { } y) start.Add(new XAttribute("default-y", Number(y * 10)));
+                AddWedge(m, hairpin.Staff, new Rational(hairpin.PositionNumerator, hairpin.PositionDenominator), start, hairpin.Above);
+                AddWedge(end, hairpin.Staff, new Rational(hairpin.EndPositionNumerator, hairpin.EndPositionDenominator),
+                    new XElement("wedge", new XAttribute("type", "stop"), new XAttribute("number", numbers[i])), hairpin.Above);
+            }
+
+            void AddWedge(int measure, int staff, Rational position, XElement wedge, bool? above)
+            {
+                if (!_wedges.TryGetValue(measure, out var list)) _wedges[measure] = list = new();
+                list.Add((staff, position, wedge, above));
+            }
+        }
+
+        private static void Mark(Dictionary<ScoreEvent, List<XElement>> marks, ScoreEvent note, XElement mark)
+        {
+            if (!marks.TryGetValue(note, out var list)) marks[note] = list = new();
+            list.Add(mark);
         }
 
         private XElement WriteMeasure(int index)
@@ -364,17 +487,11 @@ public static partial class MusicXmlExporter
                     new XElement("tuplet-actual", new XElement("tuplet-number", tuplet.Actual)),
                     new XElement("tuplet-normal", new XElement("tuplet-number", tuplet.Normal)));
 
-                Mark(first.Notes[0], startMark);
-                Mark(last.Notes[0], new XElement("tuplet", new XAttribute("type", "stop"), new XAttribute("number", number)));
+                Mark(marks, first.Notes[0], startMark);
+                Mark(marks, last.Notes[0], new XElement("tuplet", new XAttribute("type", "stop"), new XAttribute("number", number)));
             }
 
             return marks;
-
-            void Mark(ScoreEvent note, XElement mark)
-            {
-                if (!marks.TryGetValue(note, out var list)) marks[note] = list = new();
-                list.Add(mark);
-            }
         }
 
         /// <summary>Chord symbols, clef changes and octave lines of a staff in this measure, by time.</summary>
@@ -384,7 +501,7 @@ public static partial class MusicXmlExporter
             foreach (var change in measure.ClefChanges.Where(c => c.Staff == staff))
             {
                 var element = new XElement("attributes", Clef(staff, change.Clef));
-                items.Add(new Item(new Rational(change.PositionNumerator, change.PositionDenominator), element, IsHarmony: false));
+                items.Add(new Item(new Rational(change.PositionNumerator, change.PositionDenominator), element, UsesOffset: false));
             }
 
             foreach (var line in _octaveLines.GetValueOrDefault(index) ?? new())
@@ -396,13 +513,55 @@ public static partial class MusicXmlExporter
                 var direction = new XElement("direction", new XAttribute("placement", line.Shift < 0 ? "below" : "above"),
                     new XElement("direction-type", shift));
                 if (_staves > 1) direction.Add(new XElement("staff", staff + 1));
-                items.Add(new Item(line.Position, direction, IsHarmony: false));
+                items.Add(new Item(line.Position, direction, UsesOffset: false));
             }
 
             foreach (var chord in measure.ChordSymbols.Where(c => c.Staff == staff))
-                items.Add(new Item(new Rational(chord.PositionNumerator, chord.PositionDenominator), Harmony(chord, staff), IsHarmony: true));
+                items.Add(new Item(new Rational(chord.PositionNumerator, chord.PositionDenominator), Harmony(chord, staff), UsesOffset: true));
+
+            foreach (var direction in measure.Directions.Where(d => d.Staff == staff))
+                items.Add(new Item(new Rational(direction.PositionNumerator, direction.PositionDenominator), Direction(direction), UsesOffset: true));
+
+            foreach (var (_, position, wedge, above) in (_wedges.GetValueOrDefault(index) ?? new()).Where(w => w.Staff == staff))
+                items.Add(new Item(position, DirectionOf(new XElement(wedge), above, staff), UsesOffset: true));
 
             return items.OrderBy(i => i.Position).ToList();
+        }
+
+        private XElement DirectionOf(XElement type, bool? above, int staff)
+        {
+            var direction = new XElement("direction");
+            if (above is { } a) direction.Add(new XAttribute("placement", a ? "above" : "below"));
+            direction.Add(new XElement("direction-type", type));
+            if (_staves > 1) direction.Add(new XElement("staff", staff + 1));
+            return direction;
+        }
+
+        /// <summary>A dynamic, words or metronome mark as a &lt;direction&gt;.</summary>
+        private XElement Direction(ScoreDirection direction)
+        {
+            XElement type;
+            switch (direction.Kind)
+            {
+                case DirectionKind.Dynamic:
+                    type = new XElement("dynamics", DynamicElements.Contains(direction.Text)
+                        ? new XElement(direction.Text)
+                        : new XElement("other-dynamics", direction.Text));
+                    break;
+                case DirectionKind.Tempo:
+                    type = new XElement("metronome", new XElement("beat-unit", direction.BeatUnit));
+                    for (var d = 0; d < direction.BeatUnitDots; d++) type.Add(new XElement("beat-unit-dot"));
+                    type.Add(new XElement("per-minute", direction.PerMinute));
+                    break;
+                default:
+                    type = new XElement("words", direction.Text);
+                    if (direction.Italic) type.Add(new XAttribute("font-style", "italic"));
+                    if (direction.Bold) type.Add(new XAttribute("font-weight", "bold"));
+                    break;
+            }
+
+            if (direction.Y is { } y) type.Add(new XAttribute("default-y", Number(y * 10)));
+            return DirectionOf(type, direction.Above, direction.Staff);
         }
 
         private XElement Harmony(ScoreChordSymbol chord, int staff)
@@ -433,7 +592,8 @@ public static partial class MusicXmlExporter
 
         /// <summary>
         /// One voice of a staff (or, with no voice, only the staff's items). Items are written before chords that start
-        /// at the same time; a chord symbol off the current time gets an &lt;offset&gt; instead of moving the cursor.
+        /// at the same time; chord symbols and directions later than the current time get an &lt;offset&gt; instead of
+        /// moving the cursor.
         /// </summary>
         private void WriteSequence(MeasureContext context, int staff, int? voice, List<Chord> chords, List<Item> items)
         {
@@ -445,7 +605,8 @@ public static partial class MusicXmlExporter
             {
                 if (entry.Item is { } item)
                 {
-                    if (item.IsHarmony)
+                    // An offset only looks ahead; to go back (e.g. to the start of the next staff), the cursor moves.
+                    if (item.UsesOffset && item.Position >= _cursor)
                     {
                         if (item.Position != _cursor)
                         {
@@ -564,7 +725,19 @@ public static partial class MusicXmlExporter
             var notations = new XElement("notations");
             if (tieStop) notations.Add(new XElement("tied", new XAttribute("type", "stop")));
             if (tieStart) notations.Add(new XElement("tied", new XAttribute("type", "start")));
+            if (!isChordMember && _slurMarks.TryGetValue(e, out var slurs)) notations.Add(slurs);
             if (!isChordMember && context.TupletMarks.TryGetValue(e, out var marks)) notations.Add(marks);
+
+            // Tenuto with staccato is MusicXML's detached-legato (Finale's "tenuto-staccato").
+            var detached = e.Articulations.Contains(Articulation.Tenuto) && e.Articulations.Contains(Articulation.Staccato);
+            var articulations = e.Articulations.Distinct()
+                .Where(a => a != Articulation.Fermata && !(detached && a is Articulation.Tenuto or Articulation.Staccato))
+                .Select(a => new XElement(ArticulationElement(a)))
+                .ToList();
+            if (detached) articulations.Insert(0, new XElement("detached-legato"));
+            if (articulations.Count > 0) notations.Add(new XElement("articulations", articulations));
+
+            if (e.Articulations.Contains(Articulation.Fermata)) notations.Add(new XElement("fermata", new XAttribute("type", "upright")));
             if (notations.HasElements) note.Add(notations);
 
             foreach (var lyric in e.Lyrics.OrderBy(l => l.Verse))
@@ -601,7 +774,11 @@ public static partial class MusicXmlExporter
 
         private sealed record Chord(Rational Position, List<ScoreEvent> Notes);
 
-        private sealed record Item(Rational Position, XElement Element, bool IsHarmony);
+        /// <summary>
+        /// Something written between the notes of a staff. With <paramref name="UsesOffset"/> it is placed with an
+        /// &lt;offset&gt; from the current time; otherwise the cursor moves to its time.
+        /// </summary>
+        private sealed record Item(Rational Position, XElement Element, bool UsesOffset);
 
         private sealed record MeasureContext(
             ScoreMeasure Measure,

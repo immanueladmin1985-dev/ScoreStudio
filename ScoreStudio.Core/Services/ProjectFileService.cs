@@ -140,7 +140,8 @@ public static class ProjectFileService
         // chord symbols, all lyric verses, ties; version 4: clef changes, hidden staves, breaks, octave lines;
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
-        // chord symbol positions; version 10: where extender lines end).
+        // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
+        // hairpins, slurs and articulations).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -287,6 +288,7 @@ public static class ProjectFileService
                 if (measure.HiddenStaves.Any(s => s < 0 || s >= part.Staves.Count))
                     throw Corrupt($"{where}의 숨긴 보표 정보가 올바르지 않습니다.");
 
+                ValidateMarks(measure, part.Staves.Count, where);
                 measure.Events ??= new List<ScoreEvent>();
 
                 for (var e = 0; e < measure.Events.Count; e++)
@@ -310,6 +312,10 @@ public static class ProjectFileService
                     if (item.Beams.Count > MaxBeamLevels || item.Beams.Any(b => !Enum.IsDefined(b)))
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 빔 정보가 올바르지 않습니다.");
 
+                    item.Articulations ??= new List<Articulation>();
+                    if (item.Articulations.Any(a => !Enum.IsDefined(a)))
+                        throw Corrupt($"{where}의 {e + 1}번째 음표의 아티큘레이션 정보가 올바르지 않습니다.");
+
                     item.ExtendEnds ??= new List<int>();
                     if (item.ExtendEnds.Any(v => v < 1))
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 가사 정보가 올바르지 않습니다.");
@@ -327,6 +333,39 @@ public static class ProjectFileService
                 }
             }
         }
+    }
+
+    /// <summary>Dynamics, text and tempo marks, hairpins and slurs of a measure (docs/SPRINT_FINALE_MARKS.md).</summary>
+    private static void ValidateMarks(ScoreMeasure measure, int staves, string where)
+    {
+        static bool IsPosition(int numerator, int denominator) => numerator >= 0 && denominator > 0;
+        bool IsStaff(int staff) => staff >= 0 && staff < staves;
+        static bool IsHeight(double? y) => y is not { } value || InRange(value, -MaxDistance, MaxDistance);
+
+        measure.Directions ??= new List<ScoreDirection>();
+        foreach (var direction in measure.Directions)
+        {
+            if (direction is null || !Enum.IsDefined(direction.Kind) || !IsStaff(direction.Staff)
+                || !IsPosition(direction.PositionNumerator, direction.PositionDenominator) || !IsHeight(direction.Y))
+                throw Corrupt($"{where}의 셈여림·글자 지시 정보가 올바르지 않습니다.");
+            direction.Text ??= "";
+            direction.BeatUnit ??= "quarter";
+            direction.PerMinute ??= "";
+            if ((direction.Kind == DirectionKind.Dynamic && string.IsNullOrWhiteSpace(direction.Text))
+                || (direction.Kind == DirectionKind.Tempo && (string.IsNullOrWhiteSpace(direction.PerMinute)
+                    || !ScoreDirection.BeatUnits.Contains(direction.BeatUnit) || direction.BeatUnitDots is < 0 or > 3)))
+                throw Corrupt($"{where}의 셈여림·메트로놈 표시 정보가 올바르지 않습니다.");
+        }
+
+        measure.Hairpins ??= new List<ScoreHairpin>();
+        if (measure.Hairpins.Any(h => h is null || !IsStaff(h.Staff) || h.EndMeasureOffset < 0 || !IsHeight(h.Y)
+                || !IsPosition(h.PositionNumerator, h.PositionDenominator) || !IsPosition(h.EndPositionNumerator, h.EndPositionDenominator)))
+            throw Corrupt($"{where}의 크레셴도·디크레셴도 정보가 올바르지 않습니다.");
+
+        measure.Slurs ??= new List<ScoreSlur>();
+        if (measure.Slurs.Any(s => s is null || !IsStaff(s.Staff) || !IsStaff(s.EndStaff) || s.Voice < 1 || s.EndVoice < 1 || s.EndMeasureOffset < 0
+                || !IsPosition(s.PositionNumerator, s.PositionDenominator) || !IsPosition(s.EndPositionNumerator, s.EndPositionDenominator)))
+            throw Corrupt($"{where}의 이음줄 정보가 올바르지 않습니다.");
     }
 
     private static bool IsStep(string? step) => step is "A" or "B" or "C" or "D" or "E" or "F" or "G";

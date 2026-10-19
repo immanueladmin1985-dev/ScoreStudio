@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 16;
+    public const int CurrentSchemaVersion = 17;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -225,6 +225,125 @@ public sealed class ScoreMeasure
     /// it includes the clef, key and time signature. Null when the source gives none.
     /// </summary>
     public double? SourceWidth { get; set; }
+
+    /// <summary>Dynamics, text and tempo marks at points in this measure (docs/SPRINT_FINALE_MARKS.md).</summary>
+    public List<ScoreDirection> Directions { get; set; } = new();
+
+    /// <summary>Crescendo and diminuendo hairpins that start in this measure.</summary>
+    public List<ScoreHairpin> Hairpins { get; set; } = new();
+
+    /// <summary>Slurs that start in this measure.</summary>
+    public List<ScoreSlur> Slurs { get; set; } = new();
+}
+
+/// <summary>What a <see cref="ScoreDirection"/> is. Stored in project files by name.</summary>
+public enum DirectionKind
+{
+    /// <summary>A dynamic such as "mf" or "sfz", drawn in the music font's dynamic letters.</summary>
+    Dynamic,
+
+    /// <summary>Text such as "rit.", "dolce" or "Andante".</summary>
+    Words,
+
+    /// <summary>A metronome mark: <see cref="ScoreDirection.BeatUnit"/> = <see cref="ScoreDirection.PerMinute"/>.</summary>
+    Tempo,
+}
+
+/// <summary>A mark at one point of a staff that is not attached to a note: a dynamic, a text or a metronome mark.</summary>
+public sealed class ScoreDirection
+{
+    public DirectionKind Kind { get; set; } = DirectionKind.Words;
+    public int Staff { get; set; }
+
+    /// <summary>Where it stands in the measure, in quarter notes.</summary>
+    public int PositionNumerator { get; set; }
+    public int PositionDenominator { get; set; } = 1;
+
+    /// <summary>The dynamic's letters ("mf", "sfz") or the words; empty for a metronome mark.</summary>
+    public string Text { get; set; } = "";
+
+    /// <summary>True above the staff, false below; null uses the usual side (dynamics below, text and tempo above).</summary>
+    public bool? Above { get; set; }
+
+    /// <summary>Height of the mark's baseline from the source, in staff spaces above the staff's top line; null places it.</summary>
+    public double? Y { get; set; }
+
+    public bool Italic { get; set; }
+    public bool Bold { get; set; }
+
+    /// <summary>Beat units a metronome mark may name (MusicXML note type names).</summary>
+    public static readonly IReadOnlyList<string> BeatUnits = new[] { "breve", "whole", "half", "quarter", "eighth", "16th", "32nd", "64th" };
+
+    /// <summary>For a metronome mark: the beat's note value in MusicXML terms ("quarter", "half", "eighth", …).</summary>
+    public string BeatUnit { get; set; } = "quarter";
+
+    public int BeatUnitDots { get; set; }
+
+    /// <summary>For a metronome mark: beats per minute as written, e.g. "120" or "60-66".</summary>
+    public string PerMinute { get; set; } = "";
+}
+
+/// <summary>
+/// A crescendo or diminuendo hairpin on one staff, from a point in the measure that holds it to a point in the same or
+/// a later measure.
+/// </summary>
+public sealed class ScoreHairpin
+{
+    public int Staff { get; set; }
+    public bool Crescendo { get; set; } = true;
+
+    public int PositionNumerator { get; set; }
+    public int PositionDenominator { get; set; } = 1;
+
+    /// <summary>How many measures after this one it ends: 0 in the same measure.</summary>
+    public int EndMeasureOffset { get; set; }
+
+    /// <summary>Where it ends in its last measure, in quarter notes.</summary>
+    public int EndPositionNumerator { get; set; }
+    public int EndPositionDenominator { get; set; } = 1;
+
+    /// <summary>True above the staff, false below; null below.</summary>
+    public bool? Above { get; set; }
+
+    /// <summary>Height from the source, in staff spaces above the staff's top line; null places it.</summary>
+    public double? Y { get; set; }
+}
+
+/// <summary>
+/// A slur from the chord of one voice that starts at <see cref="PositionNumerator"/> in this measure to the chord that
+/// starts at the end position, in the same or a later measure. The end may be on another staff of the part (piano).
+/// </summary>
+public sealed class ScoreSlur
+{
+    public int Staff { get; set; }
+    public int Voice { get; set; } = 1;
+    public int PositionNumerator { get; set; }
+    public int PositionDenominator { get; set; } = 1;
+
+    /// <summary>How many measures after this one the last chord is: 0 in the same measure.</summary>
+    public int EndMeasureOffset { get; set; }
+
+    public int EndStaff { get; set; }
+    public int EndVoice { get; set; } = 1;
+    public int EndPositionNumerator { get; set; }
+    public int EndPositionDenominator { get; set; } = 1;
+
+    /// <summary>True curves above the notes, false below; null on the side away from the stems.</summary>
+    public bool? Above { get; set; }
+}
+
+/// <summary>Marks written on a note. Stored in project files by name.</summary>
+public enum Articulation
+{
+    Staccato,
+    Staccatissimo,
+    Accent,
+
+    /// <summary>Strong accent (^).</summary>
+    Marcato,
+
+    Tenuto,
+    Fermata,
 }
 
 public sealed class ScoreClefChange
@@ -374,6 +493,9 @@ public sealed class ScoreEvent
     /// ScoreStudio's rules.
     /// </summary>
     public bool? StemUp { get; set; }
+
+    /// <summary>Staccato, accent, fermata and the like on this note, in enum order. In a chord they apply to the whole chord.</summary>
+    public List<Articulation> Articulations { get; set; } = new();
 }
 
 public sealed class ScoreLyric

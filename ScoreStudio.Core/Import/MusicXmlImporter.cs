@@ -347,11 +347,7 @@ public static class MusicXmlImporter
     {
         private static readonly Dictionary<string, string> NotationNames = new()
         {
-            ["slur"] = "이음줄",
-            ["articulations"] = "아티큘레이션(스타카토, 악센트 등)",
             ["ornaments"] = "장식음 기호(트릴, 턴 등)",
-            ["fermata"] = "페르마타",
-            ["dynamics"] = "셈여림",
             ["technical"] = "주법 기호",
             ["arpeggiate"] = "아르페지오",
             ["non-arpeggiate"] = "아르페지오",
@@ -362,10 +358,6 @@ public static class MusicXmlImporter
 
         private static readonly Dictionary<string, string> DirectionNames = new()
         {
-            ["dynamics"] = "셈여림",
-            ["words"] = "글자 지시(빠르기말, 표정 등)",
-            ["metronome"] = "메트로놈 빠르기 표시",
-            ["wedge"] = "크레셴도·디크레셴도",
             ["pedal"] = "페달",
             ["rehearsal"] = "리허설 마크",
             ["segno"] = "세뇨·코다",
@@ -408,6 +400,23 @@ public static class MusicXmlImporter
         private (ScoreMeasure? Measure, int Voice, string Number, Rational Position) _closedTuplet;
         private int _openVoltaStart;
 
+        /// <summary>Slurs started and not yet stopped, by number, with the measure (index and object) they start in.</summary>
+        private readonly Dictionary<string, (int Index, ScoreMeasure Measure, ScoreSlur Slur)> _openSlurs = new();
+
+        /// <summary>
+        /// Slur stops read before their start in the same measure: a slur to another staff, whose start is written later
+        /// in the measure.
+        /// </summary>
+        private readonly Dictionary<string, (int Staff, int Voice, Rational Position)> _earlySlurStops = new();
+
+        /// <summary>The last slur stop read, to skip the same stop repeated on the other notes of a chord.</summary>
+        private (int Index, string Number, Rational Position) _closedSlur = (-1, "", Rational.Zero);
+
+        /// <summary>Hairpins started and not yet stopped, by number.</summary>
+        private readonly Dictionary<string, (int Index, ScoreMeasure Measure, ScoreHairpin Hairpin)> _openWedges = new();
+
+        private int _measureIndex;
+
         public PartReader(string name, string label, string instrument, ImportWarningCollector warnings)
         {
             _name = name;
@@ -434,12 +443,21 @@ public static class MusicXmlImporter
 
             foreach (var _ in _openTuplets)
                 Warn("끝나지 않은 잇단음표의 숫자·괄호는 표시하지 않음");
+            foreach (var _ in _openSlurs)
+                Warn("끝나지 않은 이음줄은 가져오지 않음");
+            foreach (var _ in _openWedges)
+                Warn("끝나지 않은 크레셴도·디크레셴도는 가져오지 않음");
 
             ApplyOctaveShifts(measures);
             foreach (var measure in measures)
             {
                 measure.HiddenStaves.RemoveAll(s => s >= _staves);
                 measure.StaffDistances.RemoveAll(d => d.Staff >= _staves);
+
+                // A fixed order, so that a score exported and imported again lists its marks the same way.
+                measure.Directions = measure.Directions.OrderBy(d => d.Staff).ThenBy(d => new Rational(d.PositionNumerator, d.PositionDenominator)).ToList();
+                measure.Hairpins = measure.Hairpins.OrderBy(h => h.Staff).ThenBy(h => new Rational(h.PositionNumerator, h.PositionDenominator)).ToList();
+                measure.Slurs = measure.Slurs.OrderBy(l => l.Staff).ThenBy(l => l.Voice).ThenBy(l => new Rational(l.PositionNumerator, l.PositionDenominator)).ToList();
             }
 
             var staves = Enumerable.Range(1, _staves)
@@ -462,6 +480,7 @@ public static class MusicXmlImporter
                 Warn("숫자가 아닌 마디 번호는 순서 번호로 바꿈");
 
             var measure = new ScoreMeasure { Number = number, Numerator = _numerator, Denominator = _denominator, KeyFifths = _keyFifths };
+            _measureIndex = index;
             // The measure's width in the source's layout, in tenths of a staff space.
             if (double.TryParse((string?)element.Attribute("width"), NumberStyles.Float, CultureInfo.InvariantCulture, out var width)
                 && width > 0 && width / 10 <= ProjectFileService.MaxLayoutDistance)
@@ -502,11 +521,7 @@ public static class MusicXmlImporter
                         if (cursor > end) end = cursor;
                         break;
                     case "direction":
-                        foreach (var shift in child.Elements("direction-type").SelectMany(d => d.Elements("octave-shift")))
-                            ReadOctaveShift(shift, child, index, cursor);
-                        foreach (var type in child.Elements("direction-type").SelectMany(d => d.Elements())
-                                     .Where(e => e.Name != "octave-shift").Where(IsStartOrSingle))
-                            Warn(DirectionNames.TryGetValue(type.Name.LocalName, out var label) ? label : $"지시 기호 <{type.Name.LocalName}>");
+                        ReadDirection(child, measure, index, cursor);
                         break;
                     case "barline":
                         ReadBarline(child, measure, index);
@@ -526,6 +541,10 @@ public static class MusicXmlImporter
 
             if (end > new Rational(4L * measure.Numerator, measure.Denominator))
                 Warn("박자표보다 긴 마디가 있음 (그대로 가져옴)");
+
+            foreach (var _ in _earlySlurStops)
+                Warn("시작이 없는 이음줄 끝은 무시함");
+            _earlySlurStops.Clear();
 
             measure.HiddenStaves.AddRange(_hiddenStaves.OrderBy(s => s));
             return measure;
@@ -842,7 +861,7 @@ public static class MusicXmlImporter
             item.Beams = ReadBeams(note);
             item.StemUp = (string?)note.Element("stem") switch { "up" => true, "down" => false, _ => null };
             ReadTuplets(note, measure, item, start + duration);
-            ReadNotations(note);
+            ReadNotations(note, measure, item);
             measure.Events.Add(item);
         }
 
@@ -1074,13 +1093,244 @@ public static class MusicXmlImporter
             static int? Inner(int? total, int outer) => total is { } t && t % outer == 0 && t / outer >= 1 ? t / outer : total;
         }
 
-        private void ReadNotations(XElement note)
+        private static readonly Dictionary<string, Articulation[]> ArticulationNames = new()
         {
-            var notations = note.Elements("notations").SelectMany(n => n.Elements())
-                .Where(n => n.Name != "tied" && n.Name != "tuplet")
-                .Where(IsStartOrSingle);
-            foreach (var name in notations.Select(n => n.Name.LocalName).Distinct())
+            ["staccato"] = new[] { Articulation.Staccato },
+            ["staccatissimo"] = new[] { Articulation.Staccatissimo },
+            ["spiccato"] = new[] { Articulation.Staccatissimo },
+            ["accent"] = new[] { Articulation.Accent },
+            ["strong-accent"] = new[] { Articulation.Marcato },
+            ["tenuto"] = new[] { Articulation.Tenuto },
+            ["detached-legato"] = new[] { Articulation.Tenuto, Articulation.Staccato },
+        };
+
+        /// <summary>
+        /// Articulations, fermatas, slurs and dynamics written on a note (docs/SPRINT_FINALE_MARKS.md); other marks are
+        /// warned about. Ties and tuplets are read elsewhere.
+        /// </summary>
+        private void ReadNotations(XElement note, ScoreMeasure measure, ScoreEvent item)
+        {
+            var notations = note.Elements("notations").SelectMany(n => n.Elements()).ToList();
+            var articulations = new SortedSet<Articulation>();
+            foreach (var mark in notations.Where(n => n.Name == "articulations").SelectMany(n => n.Elements()))
+            {
+                if (ArticulationNames.TryGetValue(mark.Name.LocalName, out var found))
+                {
+                    articulations.UnionWith(found);
+                    if (mark.Name == "spiccato") Warn("스피카토는 스타카티시모로 가져옴");
+                }
+                else
+                {
+                    Warn("기타 아티큘레이션(숨표, 중간 휴지 등)");
+                }
+            }
+
+            if (notations.Any(n => n.Name == "fermata")) articulations.Add(Articulation.Fermata);
+            item.Articulations = articulations.ToList();
+
+            var position = new Rational(item.PositionNumerator, item.PositionDenominator);
+            foreach (var slur in notations.Where(n => n.Name == "slur"))
+                ReadSlur(slur, measure, item, position);
+
+            foreach (var dynamics in notations.Where(n => n.Name == "dynamics"))
+                AddDynamic(dynamics, measure, item.Staff, position, Placement(dynamics));
+
+            foreach (var name in notations.Where(n => n.Name.LocalName is not ("tied" or "tuplet" or "articulations" or "fermata" or "slur" or "dynamics"))
+                         .Where(IsStartOrSingle).Select(n => n.Name.LocalName).Distinct())
                 Warn(NotationNames.TryGetValue(name, out var label) ? label : $"기호 <{name}>");
+        }
+
+        private static bool? Placement(XElement element) =>
+            (string?)element.Attribute("placement") switch { "above" => true, "below" => false, _ => null };
+
+        /// <summary>default-y of a mark, in staff spaces above the staff's top line.</summary>
+        private static double? DefaultY(XElement element) =>
+            double.TryParse((string?)element.Attribute("default-y"), NumberStyles.Float, CultureInfo.InvariantCulture, out var tenths) && Math.Abs(tenths) <= 2000
+                ? tenths / 10
+                : null;
+
+        /// <summary>
+        /// Pairs slur starts and stops by number. A start repeated on the notes of a chord counts once; a stop that comes
+        /// before its start in the same measure (a slur to another staff) waits for the start.
+        /// </summary>
+        private void ReadSlur(XElement slur, ScoreMeasure measure, ScoreEvent item, Rational position)
+        {
+            var number = ((string?)slur.Attribute("number"))?.Trim() is { Length: > 0 } n ? n : "1";
+            switch ((string?)slur.Attribute("type"))
+            {
+                case "start":
+                {
+                    if (_openSlurs.TryGetValue(number, out var open) && open.Index == _measureIndex && open.Slur.Staff == item.Staff
+                        && new Rational(open.Slur.PositionNumerator, open.Slur.PositionDenominator) == position)
+                        return;
+
+                    var started = new ScoreSlur { Staff = item.Staff, Voice = item.Voice, Above = Placement(slur) };
+                    if (!TrySetFraction(position, (a, b) => (started.PositionNumerator, started.PositionDenominator) = (a, b))) return;
+                    if (_earlySlurStops.Remove(number, out var stop) && stop.Position > position)
+                    {
+                        if (End(started, _measureIndex, stop.Staff, stop.Voice, stop.Position)) measure.Slurs.Add(started);
+                        return;
+                    }
+
+                    if (_openSlurs.Remove(number))
+                        Warn("끝나지 않은 이음줄은 가져오지 않음");
+                    _openSlurs[number] = (_measureIndex, measure, started);
+                    break;
+                }
+                case "stop":
+                {
+                    if (_openSlurs.Remove(number, out var open))
+                    {
+                        if (End(open.Slur, open.Index, item.Staff, item.Voice, position)) open.Measure.Slurs.Add(open.Slur);
+                        _closedSlur = (_measureIndex, number, position);
+                    }
+                    else if (_closedSlur != (_measureIndex, number, position))
+                    {
+                        _earlySlurStops[number] = (item.Staff, item.Voice, position);
+                    }
+
+                    break;
+                }
+            }
+
+            bool End(ScoreSlur s, int startIndex, int staff, int voice, Rational at)
+            {
+                (s.EndMeasureOffset, s.EndStaff, s.EndVoice) = (_measureIndex - startIndex, staff, voice);
+                return TrySetFraction(at, (a, b) => (s.EndPositionNumerator, s.EndPositionDenominator) = (a, b));
+            }
+        }
+
+        /// <summary>
+        /// A &lt;direction&gt;: octave lines, dynamics, words, metronome marks and hairpins at the cursor plus the
+        /// direction's offset. Other kinds are warned about.
+        /// </summary>
+        private void ReadDirection(XElement direction, ScoreMeasure measure, int index, Rational cursor)
+        {
+            var types = direction.Elements("direction-type").SelectMany(d => d.Elements()).ToList();
+            foreach (var shift in types.Where(t => t.Name == "octave-shift"))
+                ReadOctaveShift(shift, direction, index, cursor);
+
+            var staff = direction.Element("staff") is { } staffElement
+                && int.TryParse(staffElement.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var number)
+                && number >= 1 && number <= _staves
+                    ? number - 1
+                    : 0;
+            var position = cursor;
+            if (direction.Element("offset") is { } offset
+                && long.TryParse(offset.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var offsetDivisions)
+                && _divisions > 0)
+            {
+                position += new Rational(offsetDivisions, _divisions);
+                if (position.Sign < 0) position = Rational.Zero;
+            }
+
+            var above = Placement(direction);
+            var words = new List<XElement>();
+            var wordsAt = 0;
+            foreach (var type in types)
+            {
+                switch (type.Name.LocalName)
+                {
+                    case "octave-shift":
+                        break;
+                    case "dynamics":
+                        AddDynamic(type, measure, staff, position, above);
+                        break;
+                    case "words":
+                        if (words.Count == 0) wordsAt = measure.Directions.Count;
+                        words.Add(type);
+                        break;
+                    case "metronome":
+                        AddMetronome(type, measure, staff, position, above);
+                        break;
+                    case "wedge":
+                        ReadWedge(type, measure, staff, position, above);
+                        break;
+                    default:
+                        if (IsStartOrSingle(type))
+                            Warn(DirectionNames.TryGetValue(type.Name.LocalName, out var label) ? label : $"지시 기호 <{type.Name.LocalName}>");
+                        break;
+                }
+            }
+
+            // Several <words> in one direction are one text in several fonts (e.g. "rit." and "a tempo"); the first sets the style.
+            // The text keeps its place among the direction's other marks (e.g. "Andante" before its metronome mark).
+            var text = string.Concat(words.Select(w => w.Value)).Trim();
+            var item = new ScoreDirection
+            {
+                Kind = DirectionKind.Words, Staff = staff, Text = text, Above = above, Y = words.Count > 0 ? DefaultY(words[0]) : null,
+                Italic = words.Count > 0 && (string?)words[0].Attribute("font-style") == "italic",
+                Bold = words.Count > 0 && (string?)words[0].Attribute("font-weight") == "bold",
+            };
+            if (text.Length > 0 && TrySetFraction(position, (n, d) => (item.PositionNumerator, item.PositionDenominator) = (n, d)))
+                measure.Directions.Insert(wordsAt, item);
+        }
+
+        private void AddDirection(ScoreMeasure measure, ScoreDirection direction, Rational position)
+        {
+            if (TrySetFraction(position, (n, d) => (direction.PositionNumerator, direction.PositionDenominator) = (n, d)))
+                measure.Directions.Add(direction);
+        }
+
+        /// <summary>A dynamic: the names of its elements ("mf", "sfz"), or the text of &lt;other-dynamics&gt;.</summary>
+        private void AddDynamic(XElement dynamics, ScoreMeasure measure, int staff, Rational position, bool? above)
+        {
+            var text = string.Concat(dynamics.Elements().Select(e => e.Name == "other-dynamics" ? e.Value.Trim() : e.Name.LocalName));
+            if (text.Length == 0)
+            {
+                Warn("읽을 수 없는 셈여림은 무시함");
+                return;
+            }
+
+            AddDirection(measure, new ScoreDirection
+            {
+                Kind = DirectionKind.Dynamic, Staff = staff, Text = text, Above = above ?? Placement(dynamics), Y = DefaultY(dynamics),
+            }, position);
+        }
+
+        /// <summary>A metronome mark with one beat unit and beats per minute; a metric modulation (two beat units) is not kept.</summary>
+        private void AddMetronome(XElement metronome, ScoreMeasure measure, int staff, Rational position, bool? above)
+        {
+            var units = metronome.Elements("beat-unit").Select(u => u.Value.Trim()).ToList();
+            var perMinute = metronome.Element("per-minute")?.Value.Trim();
+            if (units.Count != 1 || !ScoreDirection.BeatUnits.Contains(units[0]) || string.IsNullOrEmpty(perMinute))
+            {
+                Warn("빠르기 바꿈 등 읽을 수 없는 메트로놈 표시는 가져오지 않음");
+                return;
+            }
+
+            AddDirection(measure, new ScoreDirection
+            {
+                Kind = DirectionKind.Tempo, Staff = staff, Above = above, Y = DefaultY(metronome),
+                BeatUnit = units[0], BeatUnitDots = Math.Min(3, metronome.Elements("beat-unit-dot").Count()), PerMinute = perMinute,
+            }, position);
+        }
+
+        /// <summary>A hairpin starts with type crescendo or diminuendo and ends with a stop of the same number.</summary>
+        private void ReadWedge(XElement wedge, ScoreMeasure measure, int staff, Rational position, bool? above)
+        {
+            var number = ((string?)wedge.Attribute("number"))?.Trim() is { Length: > 0 } n ? n : "1";
+            var type = (string?)wedge.Attribute("type");
+            if (type is "crescendo" or "diminuendo")
+            {
+                if (_openWedges.Remove(number))
+                    Warn("끝나지 않은 크레셴도·디크레셴도는 가져오지 않음");
+                var hairpin = new ScoreHairpin { Staff = staff, Crescendo = type == "crescendo", Above = above, Y = DefaultY(wedge) };
+                if (TrySetFraction(position, (a, b) => (hairpin.PositionNumerator, hairpin.PositionDenominator) = (a, b)))
+                    _openWedges[number] = (_measureIndex, measure, hairpin);
+            }
+            else if (type == "stop")
+            {
+                if (!_openWedges.Remove(number, out var open))
+                {
+                    Warn("시작이 없는 크레셴도·디크레셴도 끝은 무시함");
+                    return;
+                }
+
+                open.Hairpin.EndMeasureOffset = _measureIndex - open.Index;
+                if (TrySetFraction(position, (a, b) => (open.Hairpin.EndPositionNumerator, open.Hairpin.EndPositionDenominator) = (a, b)))
+                    open.Measure.Hairpins.Add(open.Hairpin);
+            }
         }
 
         private void ReadBarline(XElement barline, ScoreMeasure measure, int index)

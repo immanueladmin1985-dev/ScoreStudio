@@ -363,6 +363,34 @@ public sealed class ProjectFileServiceTests : IDisposable
         Assert.Equal("소문자 키", project.Title);
     }
 
+    [Fact]
+    public void Load_Version16File_HasNoMarks_AndMarksSurviveSaveAndReopen()
+    {
+        var old = ProjectFileService.Parse("""{ "SchemaVersion": 16, "Parts": [ { "Measures": [ { "Events": [ {} ] } ] } ] }""").Parts[0].Measures[0];
+        Assert.Empty(old.Directions);
+        Assert.Empty(old.Hairpins);
+        Assert.Empty(old.Slurs);
+        Assert.Empty(old.Events[0].Articulations);
+
+        var project = ScoreProject.CreateNew();
+        var measure = project.Parts[0].Measures[0];
+        measure.Events.Add(new ScoreEvent { Articulations = { Articulation.Staccato, Articulation.Fermata } });
+        measure.Directions.Add(new ScoreDirection { Kind = DirectionKind.Dynamic, Text = "mf", PositionNumerator = 1, PositionDenominator = 2, Above = false, Y = -7.5 });
+        measure.Directions.Add(new ScoreDirection { Kind = DirectionKind.Words, Text = "rit.", Italic = true, Bold = true });
+        measure.Directions.Add(new ScoreDirection { Kind = DirectionKind.Tempo, BeatUnit = "half", BeatUnitDots = 1, PerMinute = "60-66" });
+        measure.Hairpins.Add(new ScoreHairpin { Crescendo = false, PositionNumerator = 2, EndMeasureOffset = 2, EndPositionNumerator = 3, Above = true, Y = 4 });
+        measure.Slurs.Add(new ScoreSlur { Voice = 2, PositionNumerator = 1, EndMeasureOffset = 1, EndVoice = 2, EndPositionNumerator = 3, Above = false });
+        var path = PathFor("marks.scoreproj");
+        var expected = ProjectFileService.ToJson(project);
+        ProjectFileService.Save(path, project);
+
+        var reopened = ProjectFileService.Load(path);
+        reopened.ModifiedUtc = project.ModifiedUtc;
+        Assert.Equal(ProjectFileService.ToJson(project), ProjectFileService.ToJson(reopened));
+        Assert.Contains("\"Kind\": \"Tempo\"", File.ReadAllText(path));
+        Assert.Contains("\"Fermata\"", expected);
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -424,6 +452,17 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 15, "Parts": [ { "Measures": [ { "Tuplets": [ null ] } ] } ] }""", "잇단음표" },
         { """{ "SchemaVersion": 15, "Parts": [ { "Measures": [ { "Tuplets": [ { "ShowNumber": "Ratio" } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { "{ \"SchemaVersion\": 12, \"Engraving\": { \"LyricFontFamily\": \"" + new string('a', 101) + "\" } }", "페이지 배치 정보" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Directions": [ { "Staff": 1, "Kind": "Words", "Text": "dolce" } ] } ] } ] }""", "셈여림·글자 지시" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Directions": [ { "Kind": "Dynamic", "Text": "" } ] } ] } ] }""", "셈여림·메트로놈" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Directions": [ { "Kind": "Tempo", "BeatUnit": "quarter", "PerMinute": "" } ] } ] } ] }""", "셈여림·메트로놈" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Directions": [ { "Kind": "Tempo", "BeatUnit": "crotchet", "PerMinute": "60" } ] } ] } ] }""", "셈여림·메트로놈" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Directions": [ { "Kind": "Sound" } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Directions": [ null ] } ] } ] }""", "셈여림·글자 지시" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Hairpins": [ { "EndMeasureOffset": -1 } ] } ] } ] }""", "크레셴도" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Hairpins": [ { "EndPositionDenominator": 0 } ] } ] } ] }""", "크레셴도" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Slurs": [ { "EndStaff": 1 } ] } ] } ] }""", "이음줄" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Slurs": [ { "Voice": 0 } ] } ] } ] }""", "이음줄" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Events": [ { "Articulations": [ "Trill" ] } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Percussion" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };
