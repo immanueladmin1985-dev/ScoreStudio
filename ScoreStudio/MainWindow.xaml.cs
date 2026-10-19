@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using ScoreStudio.Editing;
+using ScoreStudio.Export;
 using ScoreStudio.Import;
 using ScoreStudio.KeyInput;
 using ScoreStudio.Layout;
@@ -429,6 +430,42 @@ public partial class MainWindow : Window
         {
             ShowFileError("프로젝트를 저장할 수 없습니다.", "저장 오류", ex);
             StatusText.Content = "저장 실패";
+        }
+    }
+
+    /// <summary>Writes the score as MusicXML (docs/MUSICXML_EXPORT.md); ".mxl" chooses compressed MusicXML.</summary>
+    private void ExportMusicXml_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Filter = "MusicXML (*.musicxml)|*.musicxml|압축 MusicXML (*.mxl)|*.mxl",
+            DefaultExt = ".musicxml",
+            FileName = $"{SafeFileName(Project.Title)}.musicxml",
+            Title = "MusicXML 내보내기"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        IReadOnlyList<ImportWarning> warnings;
+        try
+        {
+            Project.Title = TitleInput.Text.Trim();
+            warnings = MusicXmlExporter.ExportFile(Project, dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            ShowFileError("MusicXML로 내보낼 수 없습니다.", "내보내기 오류", ex);
+            StatusText.Content = "내보내기 실패";
+            return;
+        }
+
+        var fileName = System.IO.Path.GetFileName(dialog.FileName);
+        StatusText.Content = $"내보내기 완료: {fileName}" + (warnings.Count > 0 ? $" (경고 {warnings.Count}종류)" : "");
+        if (warnings.Count > 0)
+        {
+            var lines = warnings.Select(w => $"• {w.Message}: {w.Count}개 (처음: {w.FirstLocation})");
+            MessageBox.Show(this, $"{fileName}로 내보냈습니다. 다음 항목은 정확히 내보내지 못했습니다.\n\n{string.Join("\n", lines)}",
+                "내보내기 경고", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1082,7 +1119,7 @@ public partial class MainWindow : Window
     private void About_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(this,
-            "ScoreStudio 개발 버전\n\n지원: 프로젝트 저장/열기, 악보 화면(오선·음자리표·조표·박자표·마디선·음표·쉼표·빔·붙임줄·잇단음표·가사·코드 이름·도돌이표·볼타·음자리표 변경·옥타브 기호, 여러 페이지, 확대/축소), MusicXML 가져오기, PDF·그림에서 악보 인식(Audiveris), 키보드와 마우스로 음표·쉼표 입력과 고치기, 조표·박자표·음자리표 바꾸기, 잇단음표·가사·코드 이름 입력(실행 취소 포함)\n아직 가져오지 않음: 셈여림, 이음줄, 아티큘레이션, 글자 지시(가져오기 결과 창에 경고로 표시)\n아직 지원하지 않음: MUSX 변환, PDF 출력",
+            "ScoreStudio 개발 버전\n\n지원: 프로젝트 저장/열기, 악보 화면(오선·음자리표·조표·박자표·마디선·음표·쉼표·빔·붙임줄·잇단음표·가사·코드 이름·도돌이표·볼타·음자리표 변경·옥타브 기호, 여러 페이지, 확대/축소), MusicXML 가져오기·내보내기, PDF·그림에서 악보 인식(Audiveris), 키보드와 마우스로 음표·쉼표 입력과 고치기, 조표·박자표·음자리표 바꾸기, 잇단음표·가사·코드 이름 입력(실행 취소 포함)\n아직 가져오지 않음: 셈여림, 이음줄, 아티큘레이션, 글자 지시(가져오기 결과 창에 경고로 표시)\n아직 지원하지 않음: MUSX 변환, PDF 출력",
             "개발 상태", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 

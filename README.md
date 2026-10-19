@@ -10,13 +10,13 @@ Windows용 사보 프로그램의 첫 번째 개발 기반입니다. 목표는 `
 - 악보 화면: 페이지·시스템·보표 구조, 오선, 음자리표, 조표, 박자표, 마디선, 음표(머리·기둥·꼬리·점·임시표·덧줄), 빔(원본의 묶음을 따름), 붙임줄, 잇단음표(숫자·괄호, 겹친 잇단음표), 가사(절, 하이픈, 연장선), 코드 이름, 도돌이표·볼타, 쉼표, 파트 묶음 괄호, 원본의 보표 크기·여백·줄 간격, 음자리표 변경, 옥타브 기호(8va 등), 숨긴 보표, 원본의 줄·페이지 나눔, 확대/축소
 - PDF·그림(스캔, 화면 캡처)에서 악보 인식: Audiveris를 따로 설치해 쓰고, 해상도가 낮은 캡처는 키워서 넘기며, 여러 장을 한 악보로 이어 붙임 (`docs/OMR_IMPORT.md`). 인식한 악보는 원본 그림과 나란히 또는 겹쳐 보며 고칠 수 있음 (`docs/OMR_COMPARE.md`)
 - MusicXML(.musicxml, .xml, .mxl) 가져오기: 파트, 마디, 음표, 쉼표, 잇단음표, 가사, 붙임줄, 코드 이름, 도돌이표·볼타, 조표, 박자표, 음자리표와 그 변경, 옥타브 기호, 빔, 숨긴 보표, 줄·페이지 나눔과 가져오지 못한 요소의 경고 목록
+- MusicXML(.musicxml, .mxl) 내보내기: 가져오는 모든 항목을 MusicXML 4.0으로 써서 Finale·Dorico·MuseScore에서 열 수 있음 (`docs/MUSICXML_EXPORT.md`)
 - `CLAUDE.md` 개발 지침
 - 단계별 로드맵 및 수동 테스트 기준
 
 ## 현재 포함되지 않은 것
 - 셈여림·아티큘레이션·이음줄·글자 지시 등 (가져오기 결과 창에 경고로 표시)
 - 실제 `.musx` 변환기 연결
-- MusicXML 내보내기
 - PDF 출력
 - 붙임줄 직접 넣기·빼기
 
@@ -26,7 +26,7 @@ Windows용 사보 프로그램의 첫 번째 개발 기반입니다. 목표는 `
 | 폴더 | 내용 |
 |---|---|
 | `ScoreStudio/` | WPF 앱(화면). Windows에서만 빌드된다. |
-| `ScoreStudio.Core/` | 악보 데이터 모델, `.scoreproj` 저장/열기, 레이아웃 엔진(`Layout/`). 화면 코드와 분리되어 있다. |
+| `ScoreStudio.Core/` | 악보 데이터 모델, `.scoreproj` 저장/열기, MusicXML 가져오기(`Import/`)·내보내기(`Export/`), 레이아웃 엔진(`Layout/`). 화면 코드와 분리되어 있다. |
 | `ScoreStudio.Core.Tests/` | 저장/재열기, 잘못된 파일 처리, 레이아웃 자동 테스트(xUnit). Windows가 아니어도 실행된다. |
 | `ScoreStudio.Tests/` | 실제 WPF 렌더러로 샘플 악보를 그려 검사하고 PNG 미리보기를 만드는 테스트. Windows 전용. |
 | `ScoreStudio/Fonts/` | 음악 기호 글꼴 Bravura와 라이선스(`docs/THIRD_PARTY.md`). |
