@@ -11,7 +11,10 @@ public static partial class ScoreLayoutEngine
     {
         public List<PendingSlur> Slurs { get; } = new();
         public List<PendingHairpin> Hairpins { get; } = new();
+        public List<PendingLine> Lines { get; } = new();
     }
+
+    private sealed record PendingLine(int PartIndex, ScoreLine Line, int EndMeasure, Rational EndPosition, bool Above);
 
     private sealed record PendingSlur(int PartIndex, int EndStaff, int EndVoice, int EndMeasure, Rational EndPosition, bool Above);
 
@@ -28,6 +31,9 @@ public static partial class ScoreLayoutEngine
 
     /// <summary>Size of expression text and metronome marks, in staff spaces (about 10 points at the usual staff size).</summary>
     private const double ExpressionTextSize = 2.0;
+
+    /// <summary>Size of rehearsal marks, in staff spaces.</summary>
+    private const double RehearsalTextSize = 2.6;
 
     /// <summary>Gap between a mark and what it must clear, in staff spaces.</summary>
     private const double MarkGap = 0.4;
@@ -121,7 +127,8 @@ public static partial class ScoreLayoutEngine
     /// <summary>
     /// Articulations go on the notehead side, away from the stem; with two voices, above the upper voice and below the
     /// lower one, past its stem. Nearest the note come staccato, staccatissimo and tenuto, which sit in a space when they
-    /// fall inside the staff; then accent and marcato, outside the staff. Ornaments (trill, mordents, turns) and then a
+    /// fall inside the staff; then accent and marcato, outside the staff. Technical marks (harmonic, bowings, open,
+    /// stopped, snap pizzicato), ornaments (trill, mordents, turns) and then a
     /// fermata go above the staff (below it for a lower voice). Returns how far the chord now reaches up and down, without
     /// the ornaments and fermata.
     /// </summary>
@@ -178,7 +185,11 @@ public static partial class ScoreLayoutEngine
         // so below the staff their top meets the edge.
         var outsideAbove = chord.VoiceRole >= 0;
         var outside = outsideAbove ? Math.Min(staffTop, top) - 0.5 * sp : Math.Max(staffBottom, bottom) + 0.5 * sp;
-        var ornaments = new[] { Articulation.Trill, Articulation.Mordent, Articulation.InvertedMordent, Articulation.Turn, Articulation.InvertedTurn };
+        var ornaments = new[]
+        {
+            Articulation.Harmonic, Articulation.Open, Articulation.Stopped, Articulation.SnapPizzicato, Articulation.UpBow, Articulation.DownBow,
+            Articulation.Trill, Articulation.Mordent, Articulation.InvertedMordent, Articulation.Turn, Articulation.InvertedTurn,
+        };
         foreach (var ornament in ornaments.Where(chord.Articulations.Contains))
         {
             var (glyph, glyphWidth, height) = Smufl.Articulation(ornament, true);
@@ -355,6 +366,9 @@ public static partial class ScoreLayoutEngine
         // Dynamics in each measure, so a hairpin can start after the one at its start and stop before the one at its end.
         var dynamics = new List<(int Slot, int Measure, Rational Position, double Left, double Right)>();
 
+        // Texts, so that a dashed line ("cresc. - - -") starts where its text ends, on its baseline.
+        var texts = new List<(int Slot, int Measure, Rational Position, double Right, double Baseline)>();
+
         foreach (var planned in plan.Measures)
         {
             if (!anchors.TryGetValue(planned.Index, out var measureAnchors)) continue;
@@ -399,9 +413,12 @@ public static partial class ScoreLayoutEngine
                         var (note, noteWidth) = Smufl.MetronomeNote(direction.BeatUnit);
                         var numberText = $" = {direction.PerMinute}";
                         const double noteScale = 0.6;
+                        // Rehearsal marks are larger, bold, and boxed with a little room around the text.
+                        var size = direction.Kind == DirectionKind.Rehearsal ? RehearsalTextSize * sp : textSize;
+                        var padding = direction.Kind == DirectionKind.Rehearsal && direction.Boxed ? 0.4 * sp : 0;
                         var width = direction.Kind == DirectionKind.Tempo
                             ? (noteWidth + direction.BeatUnitDots * 0.6) * noteScale * sp + TextMetrics.Width(numberText, textSize)
-                            : TextMetrics.Width(direction.Text, textSize) * (direction.Bold ? 1.1 : 1);
+                            : TextMetrics.Width(direction.Text, size) * (direction.Bold ? 1.1 : 1) + 2 * padding;
                         double baseline;
                         if (direction.Y is { } y) baseline = staffTop - y * sp;
                         else
@@ -412,10 +429,28 @@ public static partial class ScoreLayoutEngine
                                 : Math.Max(staffTop + 6.5 * sp, under.Select(c => c.Bottom).DefaultIfEmpty(staffTop).Max() + 2.2 * sp);
                         }
 
+                        if (direction.Kind == DirectionKind.Rehearsal && direction.Y is null) baseline -= padding + 0.5 * sp;
                         var left = Free(slot, above, baseline, x, width);
+                        if (direction.Kind == DirectionKind.Rehearsal)
+                        {
+                            items.Add(new TextItem(direction.Text, left + padding, baseline, size, TextAnchor.Start, Bold: true));
+                            if (direction.Boxed)
+                            {
+                                var (boxTop, boxBottom, boxRight) = (baseline - 0.75 * size - padding, baseline + padding, left + width);
+                                var line = Smufl.ThinBarlineThickness * sp;
+                                items.Add(new LineItem(left, boxTop, boxRight, boxTop, line));
+                                items.Add(new LineItem(left, boxBottom, boxRight, boxBottom, line));
+                                items.Add(new LineItem(left, boxTop, left, boxBottom, line));
+                                items.Add(new LineItem(boxRight, boxTop, boxRight, boxBottom, line));
+                            }
+
+                            continue;
+                        }
+
                         if (direction.Kind == DirectionKind.Words)
                         {
                             items.Add(new TextItem(direction.Text, left, baseline, textSize, TextAnchor.Start, direction.Bold, Italic: direction.Italic));
+                            texts.Add((slot, planned.Index, position, left + width, baseline));
                             continue;
                         }
 
@@ -436,6 +471,183 @@ public static partial class ScoreLayoutEngine
         }
 
         DrawHairpins(items, project, plan, measureLayouts, slots, staffTops, anchors, dynamics, lyricSlots, RowBaseline, contentLeft, systemRight, pending, sp);
+        DrawLines(items, project, plan, measureLayouts, placed, slots, staffTops, anchors, texts, RowBaseline, Highest, contentLeft, systemRight, pending, sp);
+    }
+
+    /// <summary>
+    /// Bracket lines, dashed continuation lines and trill lines (docs/FINALE_MARKS_2.md). A line runs from its start time
+    /// to its end time (to just short of the barline when it ends with the measure); a trill line starts after the
+    /// trill sign and runs over its last note. A line that goes on past the system continues in the next one.
+    /// </summary>
+    private static void DrawLines(
+        List<DrawItem> items, ScoreProject project, PlannedSystem plan, List<MeasureLayout> measureLayouts, List<PlacedChord> placed,
+        List<StaffSlot> slots, double[] staffTops, Dictionary<int, List<(Rational Time, double X)>> anchors,
+        List<(int Slot, int Measure, Rational Position, double Right, double Baseline)> texts,
+        Func<int, bool, double> rowBaseline, Func<int, double, double> highest, double contentLeft, double systemRight, PendingSpans pending, double sp)
+    {
+        if (plan.MeasureCount == 0) return;
+        var lastMeasure = plan.Measures[^1].Index;
+
+        double EndX(LineKind kind, int measure, Rational position)
+        {
+            var measureAnchors = anchors[measure];
+            if (position >= measureAnchors[^1].Time && measureLayouts.FirstOrDefault(m => m.MeasureIndex == measure) is { } layout)
+                return layout.Right - 0.8 * sp;
+            // Trill lines and brackets cover their last note.
+            return XAtTime(position, measureAnchors) + (kind == LineKind.Dashes ? 0 : 1.3 * sp);
+        }
+
+        double Height(ScoreLine line, int slot, bool above, double from, double to)
+        {
+            if (line.Y is { } y) return staffTops[slot] - y * sp;
+            if (line.Kind == LineKind.Dashes) return rowBaseline(slot, above) - 0.5 * sp;
+            var under = placed.Where(c => c.Slot == slot && c.X >= from - sp && c.X <= to).ToList();
+            return above
+                ? highest(slot, Math.Min(staffTops[slot] - (line.Kind == LineKind.TrillLine ? 1.3 : 2.0) * sp, under.Select(c => c.Top).DefaultIfEmpty(staffTops[slot]).Min() - 1.0 * sp))
+                : Math.Max(staffTops[slot] + 6 * sp, under.Select(c => c.Bottom).DefaultIfEmpty(staffTops[slot]).Max() + 1.5 * sp);
+        }
+
+        void Draw(ScoreLine line, double x1, double x2, double y, bool startHook, bool endHook)
+        {
+            if (x2 - x1 < sp) x2 = x1 + sp;
+            var thickness = Smufl.StemThickness * sp * 1.2;
+            switch (line.Kind)
+            {
+                case LineKind.TrillLine:
+                    AddZigzag(items, x1, y, x2, y, 0.22 * sp, 0.45 * sp, thickness);
+                    break;
+                case LineKind.Dashes:
+                    AddDashes(items, x1, y, x2, y, thickness, sp);
+                    break;
+                default:
+                    if (line.Dashed) AddDashes(items, x1, y, x2, y, thickness, sp);
+                    else items.Add(new LineItem(x1, y, x2, y, thickness));
+                    // A hook up (1) points up the page; down (−1) points down.
+                    if (startHook && line.StartHook != 0) items.Add(new LineItem(x1, y, x1, y - line.StartHook * sp, thickness));
+                    if (endHook && line.EndHook != 0) items.Add(new LineItem(x2, y, x2, y - line.EndHook * sp, thickness));
+                    break;
+            }
+        }
+
+        var carried = pending.Lines.ToList();
+        pending.Lines.Clear();
+        foreach (var carry in carried)
+        {
+            var slot = slots.FindIndex(s => s.PartIndex == carry.PartIndex && s.StaffIndex == carry.Line.Staff);
+            if (slot < 0) continue;
+            var ends = carry.EndMeasure <= lastMeasure;
+            var x2 = ends ? EndX(carry.Line.Kind, carry.EndMeasure, carry.EndPosition) : systemRight - 0.5 * sp;
+            Draw(carry.Line, contentLeft, x2, Height(carry.Line, slot, carry.Above, contentLeft, x2), false, ends);
+            if (!ends) pending.Lines.Add(carry);
+        }
+
+        foreach (var planned in plan.Measures)
+        {
+            if (!anchors.TryGetValue(planned.Index, out var measureAnchors)) continue;
+            for (var p = 0; p < project.Parts.Count; p++)
+            {
+                if (planned.Index >= project.Parts[p].Measures.Count) continue;
+                foreach (var line in project.Parts[p].Measures[planned.Index].Lines)
+                {
+                    var slot = slots.FindIndex(s => s.PartIndex == p && s.StaffIndex == line.Staff);
+                    if (slot < 0) continue;
+                    var position = new Rational(line.PositionNumerator, line.PositionDenominator);
+                    var above = line.Above ?? line.Kind != LineKind.Dashes;
+                    var x1 = XAtTime(position, measureAnchors);
+                    double? textBaseline = null;
+                    if (line.Kind == LineKind.TrillLine)
+                    {
+                        var hasTrill = project.Parts[p].Measures[planned.Index].Events.Any(e => e.Staff == line.Staff
+                            && e.PositionNumerator * line.PositionDenominator == line.PositionNumerator * e.PositionDenominator && e.Articulations.Contains(Articulation.Trill));
+                        x1 += (hasTrill ? 2.6 : 0.4) * sp;
+                    }
+                    else if (line.Kind == LineKind.Dashes && texts.FirstOrDefault(t => t.Slot == slot && t.Measure == planned.Index && t.Position == position) is { Right: > 0 } text)
+                    {
+                        (x1, textBaseline) = (text.Right + 0.5 * sp, text.Baseline - 0.4 * sp);
+                    }
+
+                    var endMeasure = planned.Index + line.EndMeasureOffset;
+                    var endPosition = new Rational(line.EndPositionNumerator, line.EndPositionDenominator);
+                    var ends = endMeasure <= lastMeasure;
+                    var x2 = ends ? EndX(line.Kind, endMeasure, endPosition) : systemRight - 0.5 * sp;
+                    var y = line.Y is null && textBaseline is { } b ? b : Height(line, slot, above, x1, x2);
+                    Draw(line, x1, x2, y, true, ends);
+                    if (!ends) pending.Lines.Add(new PendingLine(p, line, endMeasure, endPosition, above));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Glissandos and slides: a straight or wavy line from the right of the first chord's top note to the left of the
+    /// second chord's top note. One that runs past the system ends at the system's edge.
+    /// </summary>
+    private static void DrawGlissandos(
+        List<DrawItem> items, ScoreProject project, PlannedSystem plan, List<PlacedChord> placed, List<StaffSlot> slots, double[] staffTops,
+        double systemRight, double sp)
+    {
+        if (plan.MeasureCount == 0) return;
+        PlacedChord? Find(int part, int staff, int voice, int measure, Rational at)
+        {
+            var slot = slots.FindIndex(s => s.PartIndex == part && s.StaffIndex == staff);
+            return slot < 0 ? null : placed.FirstOrDefault(c => c.Slot == slot && c.Measure == measure && c.Chord.Voice == voice && c.Chord.Start == at);
+        }
+
+        foreach (var planned in plan.Measures)
+        {
+            for (var p = 0; p < project.Parts.Count; p++)
+            {
+                if (planned.Index >= project.Parts[p].Measures.Count) continue;
+                foreach (var glissando in project.Parts[p].Measures[planned.Index].Glissandos)
+                {
+                    var start = Find(p, glissando.Staff, glissando.Voice, planned.Index, new Rational(glissando.PositionNumerator, glissando.PositionDenominator));
+                    if (start is null) continue;
+                    var end = Find(p, glissando.EndStaff, glissando.EndVoice, planned.Index + glissando.EndMeasureOffset,
+                        new Rational(glissando.EndPositionNumerator, glissando.EndPositionDenominator));
+                    var head = Smufl.NoteheadWidth(start.Chord.Value.Type) * sp;
+                    var x1 = start.X + head * (start.Chord.Notes.Any(n => n.Side > 0) ? 2 : 1) + 0.4 * sp;
+                    var y1 = StaffY(staffTops[start.Slot], start.Chord.Notes.Max(n => n.Position), sp);
+                    var (x2, y2) = end is null
+                        ? (systemRight - 0.5 * sp, y1)
+                        : (end.X - 0.4 * sp - (end.Chord.Notes.Any(n => n.Accidental is not null) ? NotePreparation.AccidentalColumnWidth * sp : 0),
+                            StaffY(staffTops[end.Slot], end.Chord.Notes.Max(n => n.Position), sp));
+                    if (x2 <= x1) continue;
+                    var thickness = Smufl.StemThickness * sp * 1.2;
+                    if (glissando.Wavy) AddZigzag(items, x1, y1, x2, y2, 0.22 * sp, 0.45 * sp, thickness);
+                    else items.Add(new LineItem(x1, y1, x2, y2, thickness));
+                }
+            }
+        }
+    }
+
+    /// <summary>A wavy line along (x1, y1)–(x2, y2): straight strokes swinging <paramref name="amplitude"/> to either side.</summary>
+    private static void AddZigzag(List<DrawItem> items, double x1, double y1, double x2, double y2, double amplitude, double step, double thickness)
+    {
+        var length = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+        if (length <= 0) return;
+        var (ux, uy) = ((x2 - x1) / length, (y2 - y1) / length);
+        var (nx, ny) = (-uy, ux);
+        var count = Math.Max(2, (int)(length / step));
+        var (px, py) = (x1, y1);
+        for (var i = 1; i <= count; i++)
+        {
+            var along = length * i / count;
+            var side = i == count ? 0 : (i % 2 == 1 ? amplitude : -amplitude);
+            var (qx, qy) = (x1 + ux * along + nx * side, y1 + uy * along + ny * side);
+            items.Add(new LineItem(px, py, qx, qy, thickness));
+            (px, py) = (qx, qy);
+        }
+    }
+
+    /// <summary>A dashed line: dashes of 0.6 spaces with 0.6-space gaps.</summary>
+    private static void AddDashes(List<DrawItem> items, double x1, double y1, double x2, double y2, double thickness, double sp)
+    {
+        var length = x2 - x1;
+        for (var at = 0.0; at < length; at += 1.2 * sp)
+        {
+            var end = Math.Min(at + 0.6 * sp, length);
+            items.Add(new LineItem(x1 + at, y1 + (y2 - y1) * at / length, x1 + end, y1 + (y2 - y1) * end / length, thickness));
+        }
     }
 
     private static void DrawHairpins(

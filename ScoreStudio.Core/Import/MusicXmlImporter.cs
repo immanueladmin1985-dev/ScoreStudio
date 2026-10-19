@@ -347,22 +347,14 @@ public static class MusicXmlImporter
     {
         private static readonly Dictionary<string, string> NotationNames = new()
         {
-            ["technical"] = "주법 기호",
-            ["arpeggiate"] = "아르페지오",
-            ["non-arpeggiate"] = "아르페지오",
-            ["glissando"] = "글리산도",
-            ["slide"] = "글리산도",
             ["accidental-mark"] = "임시표 기호",
         };
 
         private static readonly Dictionary<string, string> DirectionNames = new()
         {
             ["pedal"] = "페달",
-            ["rehearsal"] = "리허설 마크",
             ["segno"] = "세뇨·코다",
             ["coda"] = "세뇨·코다",
-            ["dashes"] = "점선 지시(cresc. - - - 등)",
-            ["bracket"] = "괄호선 지시",
             ["other-direction"] = "기타 지시 기호",
         };
 
@@ -418,6 +410,13 @@ public static class MusicXmlImporter
 
         private ScoreTranspose? _transpose;
 
+        /// <summary>Glissandos and slides started and not yet stopped, by element name and number.</summary>
+        private readonly Dictionary<string, (int Index, ScoreMeasure Measure, ScoreGlissando Glissando)> _openGlissandos = new();
+        private readonly HashSet<string> _graceGlissandos = new();
+
+        /// <summary>Bracket, dashes and trill lines started and not yet stopped, by kind and number.</summary>
+        private readonly Dictionary<string, (int Index, ScoreMeasure Measure, ScoreLine Line)> _openLines = new();
+
         /// <summary>Grace notes read and waiting for the note of their staff and voice that follows them.</summary>
         private readonly Dictionary<(int Staff, int Voice), List<ScoreGraceNote>> _pendingGraces = new();
 
@@ -457,6 +456,10 @@ public static class MusicXmlImporter
                 Warn("끝나지 않은 이음줄은 가져오지 않음");
             foreach (var _ in _openWedges)
                 Warn("끝나지 않은 크레셴도·디크레셴도는 가져오지 않음");
+            foreach (var _ in _openGlissandos)
+                Warn("끝나지 않은 글리산도는 가져오지 않음");
+            foreach (var _ in _openLines)
+                Warn("끝나지 않은 괄호선·점선·트릴 연장선은 가져오지 않음");
 
             ApplyOctaveShifts(measures);
             foreach (var measure in measures)
@@ -467,6 +470,8 @@ public static class MusicXmlImporter
                 // A fixed order, so that a score exported and imported again lists its marks the same way.
                 measure.Directions = measure.Directions.OrderBy(d => d.Staff).ThenBy(d => new Rational(d.PositionNumerator, d.PositionDenominator)).ToList();
                 measure.Hairpins = measure.Hairpins.OrderBy(h => h.Staff).ThenBy(h => new Rational(h.PositionNumerator, h.PositionDenominator)).ToList();
+                measure.Glissandos = measure.Glissandos.OrderBy(g => g.Staff).ThenBy(g => g.Voice).ThenBy(g => new Rational(g.PositionNumerator, g.PositionDenominator)).ToList();
+                measure.Lines = measure.Lines.OrderBy(l => l.Staff).ThenBy(l => new Rational(l.PositionNumerator, l.PositionDenominator)).ThenBy(l => l.Kind).ToList();
                 measure.Slurs = measure.Slurs.OrderBy(l => l.Staff).ThenBy(l => l.Voice).ThenBy(l => new Rational(l.PositionNumerator, l.PositionDenominator)).ToList();
             }
 
@@ -930,6 +935,15 @@ public static class MusicXmlImporter
 
             foreach (var slur in note.Elements("notations").SelectMany(n => n.Elements("slur")).Where(s => (string?)s.Attribute("type") == "start"))
                 _graceSlurs.Add(((string?)slur.Attribute("number"))?.Trim() is { Length: > 0 } n ? n : "1");
+
+            // A glissando can only join main notes: one that starts or ends on a grace note is left out.
+            foreach (var glissando in note.Elements("notations").SelectMany(n => n.Elements()).Where(n => n.Name.LocalName is "glissando" or "slide"))
+            {
+                var key = glissando.Name.LocalName + SpanNumber(glissando);
+                if ((string?)glissando.Attribute("type") == "start") _graceGlissandos.Add(key);
+                else _openGlissandos.Remove(key);
+                Warn("꾸밈음에서 시작하거나 꾸밈음에서 끝나는 글리산도는 가져오지 않음");
+            }
         }
 
         /// <summary>Grace notes left at the end of a measure come after the last note of their voice there.</summary>
@@ -1216,20 +1230,43 @@ public static class MusicXmlImporter
 
             if (notations.Any(n => n.Name == "fermata")) articulations.Add(Articulation.Fermata);
             foreach (var ornament in notations.Where(n => n.Name == "ornaments").SelectMany(n => n.Elements()))
-                ReadOrnament(ornament, item, articulations);
+                ReadOrnament(ornament, measure, item, articulations);
+            foreach (var technical in notations.Where(n => n.Name == "technical").SelectMany(n => n.Elements()))
+            {
+                if (TechnicalNames.TryGetValue(technical.Name.LocalName, out var mark)) articulations.Add(mark);
+                else Warn(technical.Name == "fingering" ? "운지 번호" : $"주법 기호 <{technical.Name.LocalName}>");
+            }
+
+            if (notations.FirstOrDefault(n => n.Name == "arpeggiate") is { } arpeggiate)
+                item.Arpeggio = (string?)arpeggiate.Attribute("direction") switch { "up" => ArpeggioKind.Up, "down" => ArpeggioKind.Down, _ => ArpeggioKind.Wavy };
+            else if (notations.Any(n => n.Name == "non-arpeggiate"))
+                item.Arpeggio = ArpeggioKind.NonArpeggio;
             item.Articulations = articulations.ToList();
 
             var position = new Rational(item.PositionNumerator, item.PositionDenominator);
             foreach (var slur in notations.Where(n => n.Name == "slur"))
                 ReadSlur(slur, measure, item, position);
 
+            foreach (var glissando in notations.Where(n => n.Name.LocalName is "glissando" or "slide"))
+                ReadGlissando(glissando, measure, item, position);
+
             foreach (var dynamics in notations.Where(n => n.Name == "dynamics"))
                 AddDynamic(dynamics, measure, item.Staff, position, Placement(dynamics));
 
-            foreach (var name in notations.Where(n => n.Name.LocalName is not ("tied" or "tuplet" or "articulations" or "fermata" or "slur" or "dynamics" or "ornaments"))
+            foreach (var name in notations.Where(n => n.Name.LocalName is not ("tied" or "tuplet" or "articulations" or "fermata" or "slur" or "dynamics" or "ornaments" or "technical" or "arpeggiate" or "non-arpeggiate" or "glissando" or "slide"))
                          .Where(IsStartOrSingle).Select(n => n.Name.LocalName).Distinct())
                 Warn(NotationNames.TryGetValue(name, out var label) ? label : $"기호 <{name}>");
         }
+
+        private static readonly Dictionary<string, Articulation> TechnicalNames = new()
+        {
+            ["harmonic"] = Articulation.Harmonic,
+            ["up-bow"] = Articulation.UpBow,
+            ["down-bow"] = Articulation.DownBow,
+            ["open"] = Articulation.Open,
+            ["stopped"] = Articulation.Stopped,
+            ["snap-pizzicato"] = Articulation.SnapPizzicato,
+        };
 
         private static readonly Dictionary<string, Articulation> OrnamentNames = new()
         {
@@ -1244,7 +1281,7 @@ public static class MusicXmlImporter
         /// An ornament (docs/ORNAMENTS.md): trills, turns and mordents join the note's marks; a tremolo sets its strokes
         /// (a two-note tremolo on its first note). Other ornaments are warned about.
         /// </summary>
-        private void ReadOrnament(XElement ornament, ScoreEvent item, SortedSet<Articulation> articulations)
+        private void ReadOrnament(XElement ornament, ScoreMeasure measure, ScoreEvent item, SortedSet<Articulation> articulations)
         {
             if (OrnamentNames.TryGetValue(ornament.Name.LocalName, out var mark))
             {
@@ -1267,7 +1304,7 @@ public static class MusicXmlImporter
                     break;
                 }
                 case "wavy-line":
-                    if (IsStartOrSingle(ornament)) Warn("트릴 연장선(물결선)");
+                    ReadLine(ornament, LineKind.TrillLine, measure, item.Staff, new Rational(item.PositionNumerator, item.PositionDenominator), null);
                     break;
                 case "accidental-mark":
                     Warn("임시표 기호");
@@ -1393,6 +1430,19 @@ public static class MusicXmlImporter
                     case "wedge":
                         ReadWedge(type, measure, staff, position, above);
                         break;
+                    case "bracket":
+                        ReadLine(type, LineKind.Bracket, measure, staff, position, above);
+                        break;
+                    case "dashes":
+                        ReadLine(type, LineKind.Dashes, measure, staff, position, above);
+                        break;
+                    case "rehearsal" when type.Value.Trim().Length > 0:
+                        AddDirection(measure, new ScoreDirection
+                        {
+                            Kind = DirectionKind.Rehearsal, Staff = staff, Text = type.Value.Trim(), Above = above, Y = DefaultY(type),
+                            Boxed = (string?)type.Attribute("enclosure") is not "none", Bold = true,
+                        }, position);
+                        break;
                     default:
                         if (IsStartOrSingle(type))
                             Warn(DirectionNames.TryGetValue(type.Name.LocalName, out var label) ? label : $"지시 기호 <{type.Name.LocalName}>");
@@ -1466,6 +1516,81 @@ public static class MusicXmlImporter
                 Kind = DirectionKind.Tempo, Staff = staff, Above = above, Y = DefaultY(metronome),
                 BeatUnit = units[0], BeatUnitDots = Math.Min(3, metronome.Elements("beat-unit-dot").Count()), PerMinute = perMinute,
             }, position);
+        }
+
+        private static string SpanNumber(XElement element) => ((string?)element.Attribute("number"))?.Trim() is { Length: > 0 } n ? n : "1";
+
+        /// <summary>A glissando or slide from the chord it starts on to the chord with the stop of the same number.</summary>
+        private void ReadGlissando(XElement element, ScoreMeasure measure, ScoreEvent item, Rational position)
+        {
+            var key = element.Name.LocalName + SpanNumber(element);
+            switch ((string?)element.Attribute("type"))
+            {
+                case "start":
+                {
+                    var glissando = new ScoreGlissando
+                    {
+                        Staff = item.Staff, Voice = item.Voice, Wavy = (string?)element.Attribute("line-type") == "wavy",
+                        Slide = element.Name == "slide", Text = element.Value.Trim(),
+                    };
+                    if (TrySetFraction(position, (a, b) => (glissando.PositionNumerator, glissando.PositionDenominator) = (a, b)))
+                        _openGlissandos[key] = (_measureIndex, measure, glissando);
+                    break;
+                }
+                case "stop":
+                {
+                    if (_graceGlissandos.Remove(key)) return;
+                    if (!_openGlissandos.Remove(key, out var open))
+                    {
+                        Warn("시작이 없는 글리산도 끝은 무시함");
+                        return;
+                    }
+
+                    (open.Glissando.EndMeasureOffset, open.Glissando.EndStaff, open.Glissando.EndVoice) = (_measureIndex - open.Index, item.Staff, item.Voice);
+                    if (TrySetFraction(position, (a, b) => (open.Glissando.EndPositionNumerator, open.Glissando.EndPositionDenominator) = (a, b)))
+                        open.Measure.Glissandos.Add(open.Glissando);
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// A bracket, dashes or trill line (wavy-line) starts with type start and ends with the stop of the same kind and
+        /// number. A bracket's line-end gives its hooks (up, down or none).
+        /// </summary>
+        private void ReadLine(XElement element, LineKind kind, ScoreMeasure measure, int staff, Rational position, bool? above)
+        {
+            static int Hook(XElement e) => (string?)e.Attribute("line-end") switch { "up" => 1, "down" => -1, _ => 0 };
+            var key = kind + SpanNumber(element);
+            switch ((string?)element.Attribute("type"))
+            {
+                case "start":
+                {
+                    var line = new ScoreLine
+                    {
+                        Kind = kind, Staff = staff, Above = above ?? Placement(element), Y = DefaultY(element), StartHook = Hook(element),
+                        Dashed = kind == LineKind.Bracket && (string?)element.Attribute("line-type") is "dashed" or "dotted",
+                    };
+                    if (_openLines.Remove(key)) Warn("끝나지 않은 괄호선·점선·트릴 연장선은 가져오지 않음");
+                    if (TrySetFraction(position, (a, b) => (line.PositionNumerator, line.PositionDenominator) = (a, b)))
+                        _openLines[key] = (_measureIndex, measure, line);
+                    break;
+                }
+                case "stop":
+                {
+                    if (!_openLines.Remove(key, out var open))
+                    {
+                        Warn("시작이 없는 괄호선·점선·트릴 연장선 끝은 무시함");
+                        return;
+                    }
+
+                    open.Line.EndMeasureOffset = _measureIndex - open.Index;
+                    open.Line.EndHook = Hook(element);
+                    if (TrySetFraction(position, (a, b) => (open.Line.EndPositionNumerator, open.Line.EndPositionDenominator) = (a, b)))
+                        open.Measure.Lines.Add(open.Line);
+                    break;
+                }
+            }
         }
 
         /// <summary>A hairpin starts with type crescendo or diminuendo and ends with a stop of the same number.</summary>

@@ -28,6 +28,18 @@ public static partial class MusicXmlExporter
         _ => null,
     };
 
+    /// <summary>MusicXML's &lt;technical&gt; children for the technical marks (docs/FINALE_MARKS_2.md).</summary>
+    private static string? TechnicalElement(Articulation articulation) => articulation switch
+    {
+        Articulation.Harmonic => "harmonic",
+        Articulation.UpBow => "up-bow",
+        Articulation.DownBow => "down-bow",
+        Articulation.Open => "open",
+        Articulation.Stopped => "stopped",
+        Articulation.SnapPizzicato => "snap-pizzicato",
+        _ => null,
+    };
+
     /// <summary>MusicXML's &lt;ornaments&gt; children for the ornament marks (docs/ORNAMENTS.md).</summary>
     private static string? OrnamentElement(Articulation articulation) => articulation switch
     {
@@ -82,8 +94,11 @@ public static partial class MusicXmlExporter
         /// <summary>The second chord of each two-note tremolo (its first note), with the tremolo's strokes.</summary>
         private readonly Dictionary<ScoreEvent, int> _tremoloStops = new(ReferenceEqualityComparer.Instance);
 
-        /// <summary>Slur starts and stops on the first note of chords.</summary>
+        /// <summary>Slur and glissando starts and stops on the first note of chords.</summary>
         private readonly Dictionary<ScoreEvent, List<XElement>> _slurMarks = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>Trill line (wavy-line) starts and stops, written among the first note's ornaments.</summary>
+        private readonly Dictionary<ScoreEvent, List<XElement>> _ornamentMarks = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>Hairpin starts and stops by measure index: staff, time, the &lt;wedge&gt; and the direction's placement.</summary>
         private readonly Dictionary<int, List<(int Staff, Rational Position, XElement Wedge, bool? Above)>> _wedges = new();
@@ -106,6 +121,8 @@ public static partial class MusicXmlExporter
             FindOctaveLines();
             FindSlurs();
             FindHairpins();
+            FindGlissandos();
+            FindLines();
             foreach (var measure in part.Measures)
             {
                 foreach (var e in measure.Events.Where(e => e.TremoloToNext > 0))
@@ -146,6 +163,12 @@ public static partial class MusicXmlExporter
                 foreach (var c in measure.ChordSymbols) Add(new Rational(c.PositionNumerator, c.PositionDenominator).Denominator);
                 foreach (var c in measure.ClefChanges) Add(new Rational(c.PositionNumerator, c.PositionDenominator).Denominator);
                 foreach (var d in measure.Directions) Add(new Rational(d.PositionNumerator, d.PositionDenominator).Denominator);
+                foreach (var l in measure.Lines)
+                {
+                    Add(new Rational(l.PositionNumerator, l.PositionDenominator).Denominator);
+                    Add(new Rational(l.EndPositionNumerator, l.EndPositionDenominator).Denominator);
+                }
+
                 foreach (var h in measure.Hairpins)
                 {
                     Add(new Rational(h.PositionNumerator, h.PositionDenominator).Denominator);
@@ -285,6 +308,105 @@ public static partial class MusicXmlExporter
                 if (!_wedges.TryGetValue(measure, out var list)) _wedges[measure] = list = new();
                 list.Add((staff, position, wedge, above));
             }
+        }
+
+        private void FindGlissandos()
+        {
+            var found = new List<(int Measure, ScoreGlissando Glissando, ScoreEvent First, ScoreEvent Last)>();
+            for (var m = 0; m < _part.Measures.Count; m++)
+            {
+                foreach (var glissando in _part.Measures[m].Glissandos)
+                {
+                    var end = m + glissando.EndMeasureOffset;
+                    var first = ChordAt(_part.Measures[m], glissando.Staff, glissando.Voice, new Rational(glissando.PositionNumerator, glissando.PositionDenominator));
+                    var last = end < _part.Measures.Count
+                        ? ChordAt(_part.Measures[end], glissando.EndStaff, glissando.EndVoice, new Rational(glissando.EndPositionNumerator, glissando.EndPositionDenominator))
+                        : null;
+                    if (first is null || last is null || ReferenceEquals(first, last))
+                    {
+                        _location = $"{_part.Name} {_part.Measures[m].Number}마디";
+                        Warn("음표를 찾을 수 없는 글리산도는 내보내지 않음");
+                        continue;
+                    }
+
+                    found.Add((m, glissando, first, last));
+                }
+            }
+
+            var numbers = SpanNumbers(found.Select(g => (g.Measure, g.Measure + g.Glissando.EndMeasureOffset)).ToList());
+            for (var i = 0; i < found.Count; i++)
+            {
+                var (_, glissando, first, last) = found[i];
+                var name = glissando.Slide ? "slide" : "glissando";
+                var lineType = new XAttribute("line-type", glissando.Wavy ? "wavy" : "solid");
+                var start = new XElement(name, new XAttribute("type", "start"), new XAttribute("number", numbers[i]), lineType);
+                if (glissando.Text.Length > 0) start.Add(glissando.Text);
+                Mark(_slurMarks, first, start);
+                Mark(_slurMarks, last, new XElement(name, new XAttribute("type", "stop"), new XAttribute("number", numbers[i]), new XAttribute(lineType)));
+            }
+        }
+
+        /// <summary>
+        /// Brackets and dashes become directions at their start and end times; trill lines are written on the notes at their
+        /// start and end, as MusicXML has them among a note's ornaments.
+        /// </summary>
+        private void FindLines()
+        {
+            var lines = new List<(int Measure, ScoreLine Line, int End)>();
+            for (var m = 0; m < _part.Measures.Count; m++)
+            {
+                foreach (var line in _part.Measures[m].Lines)
+                    lines.Add((m, line, Math.Min(_part.Measures.Count - 1, m + line.EndMeasureOffset)));
+            }
+
+            foreach (var kind in Enum.GetValues<LineKind>())
+            {
+                var ofKind = lines.Where(l => l.Line.Kind == kind).ToList();
+                var numbers = SpanNumbers(ofKind.Select(l => (l.Measure, l.End)).ToList());
+                for (var i = 0; i < ofKind.Count; i++)
+                {
+                    var (m, line, end) = ofKind[i];
+                    var (start, stop) = (new Rational(line.PositionNumerator, line.PositionDenominator), new Rational(line.EndPositionNumerator, line.EndPositionDenominator));
+                    if (kind == LineKind.TrillLine)
+                    {
+                        var first = ChordAt(_part.Measures[m], line.Staff, 1, start) ?? _part.Measures[m].Events.FirstOrDefault(e => e.Staff == line.Staff && Start(e) == start);
+                        var last = _part.Measures[end].Events.FirstOrDefault(e => e.Staff == line.Staff && Start(e) == stop);
+                        if (first is null || last is null)
+                        {
+                            _location = $"{_part.Name} {_part.Measures[m].Number}마디";
+                            Warn("음표를 찾을 수 없는 트릴 연장선은 내보내지 않음");
+                            continue;
+                        }
+
+                        var mark = new XElement("wavy-line", new XAttribute("type", "start"), new XAttribute("number", numbers[i]));
+                        if (line.Above is { } above) mark.Add(new XAttribute("placement", above ? "above" : "below"));
+                        if (line.Y is { } y) mark.Add(new XAttribute("default-y", Number(y * 10)));
+                        Mark(_ornamentMarks, first, mark);
+                        Mark(_ornamentMarks, last, new XElement("wavy-line", new XAttribute("type", "stop"), new XAttribute("number", numbers[i])));
+                        continue;
+                    }
+
+                    static string Hook(int hook) => hook switch { 1 => "up", -1 => "down", _ => "none" };
+                    var name = kind == LineKind.Bracket ? "bracket" : "dashes";
+                    var startMark = new XElement(name, new XAttribute("type", "start"), new XAttribute("number", numbers[i]));
+                    var stopMark = new XElement(name, new XAttribute("type", "stop"), new XAttribute("number", numbers[i]));
+                    if (kind == LineKind.Bracket)
+                    {
+                        startMark.Add(new XAttribute("line-end", Hook(line.StartHook)), new XAttribute("line-type", line.Dashed ? "dashed" : "solid"));
+                        stopMark.Add(new XAttribute("line-end", Hook(line.EndHook)));
+                    }
+
+                    if (line.Y is { } height) startMark.Add(new XAttribute("default-y", Number(height * 10)));
+                    AddDirectionMark(m, line.Staff, start, startMark, line.Above);
+                    AddDirectionMark(end, line.Staff, stop, stopMark, line.Above);
+                }
+            }
+        }
+
+        private void AddDirectionMark(int measure, int staff, Rational position, XElement mark, bool? above)
+        {
+            if (!_wedges.TryGetValue(measure, out var list)) _wedges[measure] = list = new();
+            list.Add((staff, position, mark, above));
         }
 
         private static void Mark(Dictionary<ScoreEvent, List<XElement>> marks, ScoreEvent note, XElement mark)
@@ -576,6 +698,9 @@ public static partial class MusicXmlExporter
                         ? new XElement(direction.Text)
                         : new XElement("other-dynamics", direction.Text));
                     break;
+                case DirectionKind.Rehearsal:
+                    type = new XElement("rehearsal", new XAttribute("enclosure", direction.Boxed ? "square" : "none"), direction.Text);
+                    break;
                 case DirectionKind.Tempo:
                     type = new XElement("metronome", new XElement("beat-unit", direction.BeatUnit));
                     for (var d = 0; d < direction.BeatUnitDots; d++) type.Add(new XElement("beat-unit-dot"));
@@ -778,7 +903,28 @@ public static partial class MusicXmlExporter
             if (e.Tremolo > 0) ornaments.Add(new XElement("tremolo", new XAttribute("type", "single"), e.Tremolo));
             if (!isChordMember && e.TremoloToNext > 0) ornaments.Add(new XElement("tremolo", new XAttribute("type", "start"), e.TremoloToNext));
             if (!isChordMember && _tremoloStops.TryGetValue(e, out var strokes)) ornaments.Add(new XElement("tremolo", new XAttribute("type", "stop"), strokes));
+            if (!isChordMember && _ornamentMarks.TryGetValue(e, out var lineMarks)) ornaments.Add(lineMarks);
             if (ornaments.HasElements) notations.Add(ornaments);
+            var technical = new XElement("technical", e.Articulations.Distinct().Select(TechnicalElement).OfType<string>().Select(n => new XElement(n)));
+            if (technical.HasElements) notations.Add(technical);
+
+            switch (e.Arpeggio)
+            {
+                case ArpeggioKind.Wavy:
+                    notations.Add(new XElement("arpeggiate"));
+                    break;
+                case ArpeggioKind.Up or ArpeggioKind.Down:
+                    notations.Add(new XElement("arpeggiate", new XAttribute("direction", e.Arpeggio == ArpeggioKind.Up ? "up" : "down")));
+                    break;
+                case ArpeggioKind.NonArpeggio:
+                {
+                    // The bracket is marked on the chord's top and bottom notes.
+                    var chordNotes = context.Measure.Events.Where(n => n.Staff == e.Staff && n.Voice == e.Voice && Start(n) == Start(e) && n.Arpeggio == ArpeggioKind.NonArpeggio).ToList();
+                    notations.Add(new XElement("non-arpeggiate", new XAttribute("type", e.MidiPitch >= chordNotes.Max(n => n.MidiPitch) ? "top" : "bottom")));
+                    break;
+                }
+            }
+
             if (notations.HasElements) note.Add(notations);
 
             foreach (var lyric in e.Lyrics.OrderBy(l => l.Verse))

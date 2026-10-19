@@ -689,7 +689,7 @@ public sealed class NoteLayoutTests
 
     /// <summary>
     /// Nothing of the music (chord symbols, ending brackets, octave lines, notes) reaches up into the title or the
-    /// composer lines on page 1.
+    /// composer lines on page 1. (Rehearsal marks are bold too, but start at their note rather than centered.)
     /// </summary>
     [Theory]
     [MemberData(nameof(AllScores))]
@@ -698,7 +698,7 @@ public sealed class NoteLayoutTests
         var project = MusicXmlImporter.ImportFile(file).Project;
         var page = ScoreLayoutEngine.Layout(project).Pages[0];
         var firstStaff = page.Systems[0].Top;
-        var heading = page.Items.OfType<TextItem>().Where(t => t.Y < firstStaff && (t.Bold || t.Anchor == TextAnchor.End && t.Size == 3.5)).ToList();
+        var heading = page.Items.OfType<TextItem>().Where(t => t.Y < firstStaff && (t.Bold && t.Anchor == TextAnchor.Middle || t.Anchor == TextAnchor.End && t.Size == 3.5)).ToList();
         if (heading.Count == 0) return;
 
         var headingBottom = heading.Max(t => t.Y + 0.25 * t.Size);

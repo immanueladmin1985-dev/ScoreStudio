@@ -195,4 +195,73 @@ public sealed class MarksLayoutTests
         var tie = Assert.Single(page.Items.OfType<CurveItem>());
         Assert.InRange(tie.X2 - tie.X1, 2 * Sp, 2.5 * Sp);
     }
+
+    [Fact]
+    public void Arpeggio_IsAWavyLineLeftOfTheChord_FromItsLowestToItsHighestNote()
+    {
+        var project = Score(1,
+            new ScoreEvent { MidiPitch = 60, NotationSpelling = "C4", DurationNumerator = 4, Arpeggio = ArpeggioKind.Up },
+            new ScoreEvent { MidiPitch = 67, NotationSpelling = "G4", DurationNumerator = 4 });
+        var (page, top) = Layout(project);
+
+        var heads = page.Items.OfType<GlyphItem>().Where(g => g.Glyph == Smufl.NoteheadWhole).ToList();
+        Assert.Equal(2, heads.Count);
+        var slanted = page.Items.OfType<LineItem>().Where(l => l.X1 != l.X2 && l.Y1 != l.Y2).ToList();
+        Assert.True(slanted.Count > 6, "a zigzag and an arrow");
+        Assert.All(slanted, l => Assert.True(Math.Max(l.X1, l.X2) < heads.Min(h => h.X), "left of the noteheads"));
+        // From below C4 (first ledger line below) up past G4 (second line).
+        Assert.True(slanted.Max(l => Math.Max(l.Y1, l.Y2)) >= top + 5 * Sp);
+        Assert.True(slanted.Min(l => Math.Min(l.Y1, l.Y2)) <= top + 3 * Sp);
+    }
+
+    [Fact]
+    public void Glissando_JoinsTheTwoNotes_StraightOrWavy()
+    {
+        var project = Score(1, Note("C5", 72, 0), Note("G5", 79, 1), Note("E5", 76, 2), Note("A4", 69, 3));
+        var measure = project.Parts[0].Measures[0];
+        measure.Glissandos.Add(new ScoreGlissando { PositionNumerator = 0, EndPositionNumerator = 1, Wavy = true });
+        measure.Glissandos.Add(new ScoreGlissando { PositionNumerator = 2, EndPositionNumerator = 3, Slide = true });
+        var (page, _) = Layout(project);
+
+        var heads = page.Items.OfType<GlyphItem>().Where(g => g.Glyph == Smufl.NoteheadBlack).OrderBy(g => g.X).ToList();
+        var slanted = page.Items.OfType<LineItem>().Where(l => l.X1 != l.X2 && l.Y1 != l.Y2).ToList();
+        var wavy = slanted.Where(l => l.X1 > heads[0].X && l.X2 < heads[1].X).ToList();
+        Assert.True(wavy.Count > 3, "the wavy glissando is a zigzag");
+        Assert.True(wavy.Last().Y2 < wavy.First().Y1, "it rises from C5 to G5");
+        var slide = Assert.Single(slanted, l => l.X1 > heads[2].X && l.X2 < heads[3].X);
+        Assert.True(slide.Y2 > slide.Y1, "the slide falls from E5 to A4");
+    }
+
+    [Fact]
+    public void BracketAndTrillLine_AreAboveTheStaff_AndABracketContinuesIntoTheNextSystem()
+    {
+        var project = Score(1, Note("C5", 72, 0), Note("D5", 74, 1), Note("E5", 76, 2), Note("F5", 77, 3));
+        project.Parts[0].Measures[0].Events[2].Articulations.Add(Articulation.Trill);
+        var measure = project.Parts[0].Measures[0];
+        measure.Lines.Add(new ScoreLine { Kind = LineKind.Bracket, PositionNumerator = 0, EndPositionNumerator = 1, StartHook = -1, EndHook = -1 });
+        measure.Lines.Add(new ScoreLine { Kind = LineKind.TrillLine, PositionNumerator = 2, EndPositionNumerator = 3 });
+        var (page, top) = Layout(project);
+
+        var above = page.Items.OfType<LineItem>().Where(l => Math.Max(l.Y1, l.Y2) < top - 0.2 * Sp).ToList();
+        var level = Assert.Single(above, l => l.Y1 == l.Y2 && l.X2 - l.X1 > Sp);
+        var hooks = above.Where(l => l.X1 == l.X2).ToList();
+        Assert.Equal(new[] { level.X1, level.X2 }, hooks.Select(h => h.X1).Order());
+        Assert.All(hooks, h => Assert.True(h.Y2 > h.Y1, "the hooks point down"));
+
+        var trill = Glyph(page, Smufl.Articulation(Articulation.Trill, true).Glyph);
+        var wave = above.Where(l => l.X1 != l.X2 && l.Y1 != l.Y2).ToList();
+        Assert.True(wave.Count > 3, "the trill line is wavy");
+        Assert.True(wave.Min(l => l.X1) > trill.X, "it starts after the trill sign");
+
+        // A bracket from the first measure to the third, with a system break before the third.
+        project = Score(3, Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[2].SystemBreak = true;
+        project.Parts[0].Measures[0].Lines.Add(new ScoreLine { Kind = LineKind.Bracket, PositionNumerator = 0, EndMeasureOffset = 2, EndPositionNumerator = 2, StartHook = -1, EndHook = -1 });
+        var layout = ScoreLayoutEngine.Layout(project);
+        var systems = layout.Pages[0].Systems;
+        Assert.Equal(2, systems.Count);
+        var hookLines = layout.Pages[0].Items.OfType<LineItem>().Where(l => l.X1 == l.X2 && l.Y2 - l.Y1 is > 0.9 * Sp and < 1.1 * Sp).ToList();
+        Assert.Single(hookLines, l => l.Y1 < systems[0].Staves[0].Top);
+        Assert.Single(hookLines, l => l.Y1 > systems[0].Staves[0].Top + 4 * Sp && l.Y1 < systems[1].Staves[0].Top);
+    }
 }

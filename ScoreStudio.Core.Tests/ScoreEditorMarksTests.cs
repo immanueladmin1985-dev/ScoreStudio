@@ -23,6 +23,14 @@ public sealed class ScoreEditorMarksTests
     private static ScoreMeasure Measure(ScoreEditor editor, int index) => editor.Project.Parts[0].Measures[index];
 
     [Fact]
+    public void EveryArticulation_HasItsOwnName()
+    {
+        // The Articulation tool's menu lists every mark by this name.
+        var names = Enum.GetValues<Articulation>().Select(ScoreEditor.ArticulationName).ToList();
+        Assert.Equal(names.Count, names.Distinct().Count());
+    }
+
+    [Fact]
     public void Articulation_IsAddedToTheSelectedNote_TakenOffWhenAddedAgain_AndUndone()
     {
         var editor = Editor();

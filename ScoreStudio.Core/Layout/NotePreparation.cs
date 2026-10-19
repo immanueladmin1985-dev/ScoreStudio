@@ -65,6 +65,9 @@ internal sealed class PreparedChord
     /// <summary>The part of <see cref="LeftExtent"/> taken by the grace notes before the chord, in staff spaces.</summary>
     public double GraceRoomBefore { get; init; }
 
+    /// <summary>How the chord is rolled (any of its notes says so).</summary>
+    public ArpeggioKind Arpeggio { get; init; }
+
     /// <summary>A "let ring" tie leaves every note of the chord.</summary>
     public bool LetRing { get; set; }
 
@@ -238,6 +241,7 @@ internal static class NotePreparation
         public required IReadOnlyList<Articulation> Articulations { get; init; }
         public required IReadOnlyList<PreparedGrace> Graces { get; init; }
         public bool LetRing { get; init; }
+        public ArpeggioKind Arpeggio { get; init; }
         public int Tremolo { get; init; }
         public int TremoloToNext { get; init; }
         public required IReadOnlyList<BeamType> Beams { get; set; }
@@ -338,7 +342,8 @@ internal static class NotePreparation
                     ExtendEnds = chordEvents.SelectMany(e => e.ExtendEnds).Distinct().ToList(),
                     Articulations = chordEvents.SelectMany(e => e.Articulations).Distinct().OrderBy(a => a).ToList(),
                     Graces = PrepareGraces(chordEvents.FirstOrDefault(e => e.GraceNotes.Count > 0) ?? first, measure, clef),
-                    LetRing = chordEvents.Any(e => e.LetRing), Tremolo = chordEvents.Max(e => e.Tremolo), TremoloToNext = tremoloToNext,
+                    LetRing = chordEvents.Any(e => e.LetRing),
+                    Arpeggio = chordEvents.Select(e => e.Arpeggio).FirstOrDefault(a => a != ArpeggioKind.None), Tremolo = chordEvents.Max(e => e.Tremolo), TremoloToNext = tremoloToNext,
                 });
             }
 
@@ -348,7 +353,7 @@ internal static class NotePreparation
             {
                 var stemUp = chord.GroupStemUp ?? chord.SourceStemUp ?? StemUp(chord.Role, chord.Notes.Select(n => n.Position).ToList());
                 built[chord] = BuildChord(partIndex, staff, chord.First.Voice, Start(chord.First), Duration(chord.First), chord.Value, stemUp, chord.Role,
-                    chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds, chord.Articulations, chord.Graces);
+                    chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds, chord.Articulations, chord.Graces, chord.Arpeggio);
                 (built[chord].LetRing, built[chord].Tremolo, built[chord].TremoloToNext) = (chord.LetRing, chord.Tremolo, chord.TremoloToNext);
                 // Room for the bars of a two-note tremolo between the two chords.
                 if (chord.TremoloToNext > 0) built[chord].RightExtent += 2.5;
@@ -485,6 +490,9 @@ internal static class NotePreparation
 
     private static double DotsWidth(NoteValue value) => value.Dots == 0 ? 0 : 0.35 + value.Dots * 0.6;
 
+    /// <summary>Room for an arpeggio line before a chord, in staff spaces.</summary>
+    public const double ArpeggioRoom = 1.2;
+
     /// <summary>Grace notes are drawn at this size of normal notes.</summary>
     public const double GraceScale = 0.6;
 
@@ -540,7 +548,7 @@ internal static class NotePreparation
         int partIndex, int staff, int voice, Rational start, Rational duration, NoteValue value, bool stemUp, int role,
         List<(int Position, int? Accidental, int Midi, bool Tie)> notes, int octaveShift, IReadOnlyList<BeamType> beams,
         IReadOnlyList<ScoreLyric> lyrics, IReadOnlyList<int> extendEnds, IReadOnlyList<Articulation> articulations,
-        IReadOnlyList<PreparedGrace> graces)
+        IReadOnlyList<PreparedGrace> graces, ArpeggioKind arpeggio)
     {
         var sorted = notes.OrderBy(n => n.Position).ToList();
         var sides = new int[sorted.Count];
@@ -581,9 +589,9 @@ internal static class NotePreparation
         {
             PartIndex = partIndex, Staff = staff, Voice = voice, Start = start, Duration = duration, Value = value, IsRest = false,
             StemUp = stemUp, VoiceRole = role, OctaveShift = octaveShift, Beams = beams, Lyrics = lyrics, ExtendEnds = extendEnds,
-            Articulations = articulations, Graces = graces, GraceRoomBefore = GraceRoom(graces, after: false),
+            Articulations = articulations, Graces = graces, GraceRoomBefore = GraceRoom(graces, after: false), Arpeggio = arpeggio,
             Notes = sorted.Select((n, i) => new PreparedNote(n.Position, n.Accidental, sides[i], columns[i], n.Midi, n.Tie)).ToList(),
-            LeftExtent = displacedLeft + accidentalRoom + GraceRoom(graces, after: false),
+            LeftExtent = displacedLeft + accidentalRoom + GraceRoom(graces, after: false) + (arpeggio == ArpeggioKind.None ? 0 : ArpeggioRoom),
             RightExtent = headWidth + displacedRight + Math.Max(DotsWidth(value), flagRoom) + GraceRoom(graces, after: true),
         };
     }

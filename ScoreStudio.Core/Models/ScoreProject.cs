@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 20;
+    public const int CurrentSchemaVersion = 22;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -253,6 +253,77 @@ public sealed class ScoreMeasure
 
     /// <summary>Slurs that start in this measure.</summary>
     public List<ScoreSlur> Slurs { get; set; } = new();
+
+    /// <summary>Glissandos and slides that start in this measure (docs/FINALE_MARKS_2.md).</summary>
+    public List<ScoreGlissando> Glissandos { get; set; } = new();
+
+    /// <summary>Bracket lines, dashed continuation lines ("cresc. - - -") and trill lines that start in this measure.</summary>
+    public List<ScoreLine> Lines { get; set; } = new();
+}
+
+/// <summary>A glissando or slide: a straight or wavy line from one chord to another, like a slur's ends.</summary>
+public sealed class ScoreGlissando
+{
+    public int Staff { get; set; }
+    public int Voice { get; set; } = 1;
+    public int PositionNumerator { get; set; }
+    public int PositionDenominator { get; set; } = 1;
+    public int EndMeasureOffset { get; set; }
+    public int EndStaff { get; set; }
+    public int EndVoice { get; set; } = 1;
+    public int EndPositionNumerator { get; set; }
+    public int EndPositionDenominator { get; set; } = 1;
+
+    /// <summary>A wavy line instead of a straight one.</summary>
+    public bool Wavy { get; set; }
+
+    /// <summary>MusicXML's &lt;slide&gt; (a portamento) rather than &lt;glissando&gt;; drawn the same.</summary>
+    public bool Slide { get; set; }
+
+    /// <summary>Text along the line, e.g. "gliss."; empty for none.</summary>
+    public string Text { get; set; } = "";
+}
+
+/// <summary>What a <see cref="ScoreLine"/> is. Stored in project files by name.</summary>
+public enum LineKind
+{
+    /// <summary>A bracket line (Finale's bracket smart shapes), with optional hooks at its ends.</summary>
+    Bracket,
+
+    /// <summary>A dashed line continuing a text, e.g. "cresc. - - - -".</summary>
+    Dashes,
+
+    /// <summary>A trill's wavy extension line.</summary>
+    TrillLine,
+}
+
+/// <summary>A line over a stretch of a staff, from a point in the measure that holds it to a point in a later one.</summary>
+public sealed class ScoreLine
+{
+    public LineKind Kind { get; set; }
+    public int Staff { get; set; }
+    public int PositionNumerator { get; set; }
+    public int PositionDenominator { get; set; } = 1;
+
+    /// <summary>How many measures after this one it ends: 0 in the same measure.</summary>
+    public int EndMeasureOffset { get; set; }
+
+    public int EndPositionNumerator { get; set; }
+    public int EndPositionDenominator { get; set; } = 1;
+
+    /// <summary>True above the staff, false below; null uses the usual side (above, dashes below).</summary>
+    public bool? Above { get; set; }
+
+    /// <summary>Height from the source, in staff spaces above the staff's top line; null places it.</summary>
+    public double? Y { get; set; }
+
+    /// <summary>A bracket drawn dashed.</summary>
+    public bool Dashed { get; set; }
+
+    /// <summary>A bracket's hook at its start and end: 1 up, −1 down, 0 none.</summary>
+    public int StartHook { get; set; }
+
+    public int EndHook { get; set; }
 }
 
 /// <summary>What a <see cref="ScoreDirection"/> is. Stored in project files by name.</summary>
@@ -266,6 +337,9 @@ public enum DirectionKind
 
     /// <summary>A metronome mark: <see cref="ScoreDirection.BeatUnit"/> = <see cref="ScoreDirection.PerMinute"/>.</summary>
     Tempo,
+
+    /// <summary>A rehearsal mark such as "A" or "12", in bold, boxed unless <see cref="ScoreDirection.Boxed"/> is false.</summary>
+    Rehearsal,
 }
 
 /// <summary>A mark at one point of a staff that is not attached to a note: a dynamic, a text or a metronome mark.</summary>
@@ -289,6 +363,9 @@ public sealed class ScoreDirection
 
     public bool Italic { get; set; }
     public bool Bold { get; set; }
+
+    /// <summary>For a rehearsal mark: drawn in a box.</summary>
+    public bool Boxed { get; set; } = true;
 
     /// <summary>Beat units a metronome mark may name (MusicXML note type names).</summary>
     public static readonly IReadOnlyList<string> BeatUnits = new[] { "breve", "whole", "half", "quarter", "eighth", "16th", "32nd", "64th" };
@@ -374,6 +451,37 @@ public enum Articulation
 
     /// <summary>Upper mordent (short trill, no stroke), MusicXML's "inverted-mordent".</summary>
     InvertedMordent,
+
+    // Technical marks (docs/FINALE_MARKS_2.md), above the staff with the ornaments.
+    Harmonic,
+    UpBow,
+    DownBow,
+
+    /// <summary>Open (o), e.g. an open string or an open horn.</summary>
+    Open,
+
+    /// <summary>Stopped (+), e.g. a stopped horn or a left-hand pizzicato.</summary>
+    Stopped,
+
+    SnapPizzicato,
+}
+
+/// <summary>How a chord is rolled. Stored in project files by name.</summary>
+public enum ArpeggioKind
+{
+    None,
+
+    /// <summary>A wavy line before the chord.</summary>
+    Wavy,
+
+    /// <summary>A wavy line with an arrow up.</summary>
+    Up,
+
+    /// <summary>A wavy line with an arrow down.</summary>
+    Down,
+
+    /// <summary>A bracket: play the notes together (non-arpeggio).</summary>
+    NonArpeggio,
 }
 
 public sealed class ScoreClefChange
@@ -532,6 +640,9 @@ public sealed class ScoreEvent
     /// They take no time in the measure. In a chord the first note carries them (docs/GRACE_NOTES.md).
     /// </summary>
     public List<ScoreGraceNote> GraceNotes { get; set; } = new();
+
+    /// <summary>Rolls the chord this note is in (docs/FINALE_MARKS_2.md); MusicXML marks every note of the chord.</summary>
+    public ArpeggioKind Arpeggio { get; set; }
 
     /// <summary>A "let ring" tie: a short tie to nothing, the note is left to sound (docs/ORNAMENTS.md).</summary>
     public bool LetRing { get; set; }

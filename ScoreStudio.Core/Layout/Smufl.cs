@@ -227,6 +227,12 @@ public static class Smufl
         Models.Articulation.InvertedTurn => ('\uE568', 1.828, 0.872),
         Models.Articulation.Mordent => ('\uE56D', 2.916, 1.276),
         Models.Articulation.InvertedMordent => ('\uE56C', 2.92, 0.98),
+        Models.Articulation.Harmonic => ('\uE614', 0.8, 0.8),
+        Models.Articulation.UpBow => ('\uE612', 1.0, 1.98),
+        Models.Articulation.DownBow => ('\uE610', 1.248, 1.272),
+        Models.Articulation.Open => ('\uE5E7', 1.22, 1.216),
+        Models.Articulation.Stopped => ('\uE5E5', 1.088, 1.088),
+        Models.Articulation.SnapPizzicato => ('\uE631', 0.8, 1.2),
         _ => (above ? '\uE4C0' : '\uE4C1', 2.42, 1.33),
     };
 

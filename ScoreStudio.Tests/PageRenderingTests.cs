@@ -164,6 +164,7 @@ public sealed class PageRenderingTests
     [InlineData("finale-marks")]
     [InlineData("grace-notes")]
     [InlineData("ornaments")]
+    [InlineData("finale-marks-2")]
     public void ImportedMusicXml_DrawsClefsAndNoteheadsWhereTheLayoutPutsThem(string sample)
     {
         RunSta(() =>

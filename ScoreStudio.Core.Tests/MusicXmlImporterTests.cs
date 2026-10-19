@@ -93,6 +93,27 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void GlissandoToAGraceNote_IsLeftOutWithOneWarning()
+    {
+        // As in denigma's glissando.musx: a slide from a main note to a grace note, and another starting on a grace note.
+        var xml = OneMeasure("", """
+            <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+              <notations><slide type="start"/></notations></note>
+            <note><grace/><pitch><step>E</step><octave>5</octave></pitch><voice>1</voice><type>eighth</type>
+              <notations><slide type="stop"/></notations></note>
+            <note><grace slash="yes"/><pitch><step>F</step><octave>5</octave></pitch><voice>1</voice><type>eighth</type>
+              <notations><glissando type="start"/></notations></note>
+            <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+              <notations><glissando type="stop"/></notations></note>
+            """).Replace("<duration>4</duration>", "<duration>2</duration>").Replace("<type>whole</type>", "<type>half</type>");
+        var result = MusicXmlImporter.ImportXml(xml, "글리산도");
+
+        Assert.Empty(result.Project.Parts[0].Measures[0].Glissandos);
+        var warning = Assert.Single(result.Warnings);
+        Assert.Equal(("꾸밈음에서 시작하거나 꾸밈음에서 끝나는 글리산도는 가져오지 않음", 2), (warning.Message, warning.Count));
+    }
+
+    [Fact]
     public void TempoTextWithAMetronomeNoteSymbol_BecomesOneText()
     {
         var xml = OneMeasure("", """
@@ -137,6 +158,33 @@ public sealed class MusicXmlImporterTests : IDisposable
         Assert.Equal(3, measures[1].Events[0].Tremolo);
         Assert.Equal(new[] { "", "Turn", "InvertedMordent", "InvertedTurn,Mordent" }, measures[1].Events.Select(e => string.Join(",", e.Articulations)));
         Assert.Equal(new[] { true, false }, measures[2].Events.Select(e => e.LetRing));
+    }
+
+    [Fact]
+    public void Arpeggios_Techniques_RehearsalMarks_Glissandos_AndLines_AreKept()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("finale-marks-2.musicxml"));
+        Assert.Empty(result.Warnings);
+        var measures = result.Project.Parts[0].Measures;
+
+        Assert.Equal(new[] { ArpeggioKind.Wavy, ArpeggioKind.Up, ArpeggioKind.NonArpeggio, ArpeggioKind.None },
+            measures[0].Events.Where(e => e.Kind == "Note").GroupBy(e => e.PositionNumerator).Select(g => g.Max(e => e.Arpeggio)));
+        Assert.Equal(new[] { Articulation.Harmonic }, measures[0].Events[^1].Articulations);
+        Assert.Equal(new[] { "DownBow", "UpBow", "", "" }, measures[1].Events.Select(e => string.Join(",", e.Articulations)));
+
+        Assert.Equal(new[] { ("A", true), ("Coda", false) },
+            measures.SelectMany(m => m.Directions).Where(d => d.Kind == DirectionKind.Rehearsal).Select(d => (d.Text, d.Boxed)));
+
+        var gliss = Assert.Single(measures[1].Glissandos);
+        Assert.Equal((true, false, "gliss.", 2, 0, 3), (gliss.Wavy, gliss.Slide, gliss.Text, gliss.PositionNumerator, gliss.EndMeasureOffset, gliss.EndPositionNumerator));
+        var slide = Assert.Single(measures[2].Glissandos);
+        Assert.Equal((false, true, 0, 1), (slide.Wavy, slide.Slide, slide.PositionNumerator, slide.EndPositionNumerator));
+
+        var bracket = Assert.Single(measures[2].Lines);
+        Assert.Equal((LineKind.Bracket, true, -1, -1, 0, 3, 1), (bracket.Kind, bracket.Above, bracket.StartHook, bracket.EndHook, bracket.PositionNumerator, bracket.EndPositionNumerator, bracket.EndPositionDenominator));
+        Assert.Equal(new[] { (LineKind.Dashes, (bool?)false, 0, 3), (LineKind.TrillLine, null, 0, 2) },
+            measures[3].Lines.OrderBy(l => l.Kind).Select(l => (l.Kind, l.Above, l.PositionNumerator, l.EndPositionNumerator)));
+        Assert.Contains(Articulation.Trill, measures[3].Events[0].Articulations);
     }
 
     [Fact]
@@ -850,6 +898,7 @@ public sealed class MusicXmlImporterTests : IDisposable
     [InlineData("part-groups.musicxml")]
     [InlineData("page-layout.musicxml")]
     [InlineData("lyrics-ties.musicxml")]
+    [InlineData("finale-marks-2.musicxml")]
     public void ImportedProject_SurvivesSaveAndReopen(string file)
     {
         var imported = MusicXmlImporter.ImportFile(Sample(file)).Project;

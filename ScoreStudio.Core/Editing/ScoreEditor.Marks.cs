@@ -37,6 +37,12 @@ public sealed partial class ScoreEditor
         Articulation.InvertedTurn => "거꾸로 된 턴",
         Articulation.Mordent => "모르덴트(아래)",
         Articulation.InvertedMordent => "모르덴트(위, 짧은 트릴)",
+        Articulation.Harmonic => "하모닉",
+        Articulation.UpBow => "올림활",
+        Articulation.DownBow => "내림활",
+        Articulation.Open => "개방(호른 등의 열림)",
+        Articulation.Stopped => "막음(+)",
+        Articulation.SnapPizzicato => "스냅 피치카토",
         _ => "페르마타",
     };
 

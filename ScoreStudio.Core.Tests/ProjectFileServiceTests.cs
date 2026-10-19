@@ -420,6 +420,33 @@ public sealed class ProjectFileServiceTests : IDisposable
         Assert.Equal((-5, -9, -1), (transpose.Diatonic, transpose.Chromatic, transpose.OctaveChange));
     }
 
+    [Fact]
+    public void Load_Version20File_HasNoArpeggiosGlissandosOrLines_AndTheySurviveSaveAndReopen()
+    {
+        var old = ProjectFileService.Parse("""{ "SchemaVersion": 20, "Parts": [ { "Measures": [ { "Events": [ {} ] } ] } ] }""").Parts[0].Measures[0];
+        Assert.Equal(ArpeggioKind.None, old.Events[0].Arpeggio);
+        Assert.Empty(old.Glissandos);
+        Assert.Empty(old.Lines);
+
+        var project = ScoreProject.CreateNew();
+        var measure = project.Parts[0].Measures[0];
+        measure.Events.Add(new ScoreEvent { Arpeggio = ArpeggioKind.Down, Articulations = { Articulation.UpBow, Articulation.Harmonic } });
+        measure.Directions.Add(new ScoreDirection { Kind = DirectionKind.Rehearsal, Text = "B", Boxed = false });
+        measure.Glissandos.Add(new ScoreGlissando { Wavy = true, Text = "gliss.", EndMeasureOffset = 1, EndPositionNumerator = 1, EndPositionDenominator = 2 });
+        measure.Lines.Add(new ScoreLine { Kind = LineKind.Bracket, Above = true, Dashed = true, StartHook = -1, EndHook = 1, EndPositionNumerator = 3 });
+        var path = PathFor("lines.scoreproj");
+        ProjectFileService.Save(path, project);
+
+        var reopened = ProjectFileService.Load(path).Parts[0].Measures[0];
+        Assert.Equal((ArpeggioKind.Down, "UpBow,Harmonic"), (reopened.Events[0].Arpeggio, string.Join(",", reopened.Events[0].Articulations)));
+        var rehearsal = Assert.Single(reopened.Directions);
+        Assert.Equal((DirectionKind.Rehearsal, "B", false), (rehearsal.Kind, rehearsal.Text, rehearsal.Boxed));
+        var gliss = Assert.Single(reopened.Glissandos);
+        Assert.Equal((true, "gliss.", 1, 1, 2), (gliss.Wavy, gliss.Text, gliss.EndMeasureOffset, gliss.EndPositionNumerator, gliss.EndPositionDenominator));
+        var line = Assert.Single(reopened.Lines);
+        Assert.Equal((LineKind.Bracket, (bool?)true, true, -1, 1, 3), (line.Kind, line.Above, line.Dashed, line.StartHook, line.EndHook, line.EndPositionNumerator));
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -495,6 +522,14 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 18, "Parts": [ { "Transpose": { "Chromatic": 40 } } ] }""", "이조 악기" },
         { """{ "SchemaVersion": 19, "Parts": [ { "Measures": [ { "Events": [ { "GraceNotes": [ { "Type": "quaver" } ] } ] } ] } ] }""", "꾸밈음" },
         { """{ "SchemaVersion": 19, "Parts": [ { "Measures": [ { "Events": [ { "GraceNotes": [ { "MidiPitch": 130 } ] } ] } ] } ] }""", "꾸밈음" },
+        { """{ "SchemaVersion": 21, "Parts": [ { "Measures": [ { "Events": [ { "Arpeggio": 9 } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 21, "Parts": [ { "Measures": [ { "Directions": [ { "Kind": "Rehearsal", "Text": " " } ] } ] } ] }""", "셈여림·메트로놈" },
+        { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Glissandos": [ { "EndStaff": 1 } ] } ] } ] }""", "글리산도" },
+        { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Glissandos": [ { "EndMeasureOffset": -1 } ] } ] } ] }""", "글리산도" },
+        { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Glissandos": [ null ] } ] } ] }""", "글리산도" },
+        { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Lines": [ { "StartHook": 2 } ] } ] } ] }""", "괄호선" },
+        { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Wave" } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Lines": [ { "EndPositionDenominator": 0 } ] } ] } ] }""", "괄호선" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Percussion" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };

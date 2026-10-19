@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments).
+        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -319,6 +319,8 @@ public static class ProjectFileService
                     if (item.Articulations.Any(a => !Enum.IsDefined(a)))
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 아티큘레이션 정보가 올바르지 않습니다.");
 
+                    if (!Enum.IsDefined(item.Arpeggio))
+                        throw Corrupt($"{where}의 {e + 1}번째 음표의 아르페지오 정보가 올바르지 않습니다.");
                     if (item.Tremolo is < 0 or > 4 || item.TremoloToNext is < 0 or > 4)
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 트레몰로 정보가 올바르지 않습니다.");
 
@@ -361,7 +363,7 @@ public static class ProjectFileService
             direction.Text ??= "";
             direction.BeatUnit ??= "quarter";
             direction.PerMinute ??= "";
-            if ((direction.Kind == DirectionKind.Dynamic && string.IsNullOrWhiteSpace(direction.Text))
+            if ((direction.Kind is DirectionKind.Dynamic or DirectionKind.Rehearsal && string.IsNullOrWhiteSpace(direction.Text))
                 || (direction.Kind == DirectionKind.Tempo && (string.IsNullOrWhiteSpace(direction.PerMinute)
                     || !ScoreDirection.BeatUnits.Contains(direction.BeatUnit) || direction.BeatUnitDots is < 0 or > 3)))
                 throw Corrupt($"{where}의 셈여림·메트로놈 표시 정보가 올바르지 않습니다.");
@@ -371,6 +373,18 @@ public static class ProjectFileService
         if (measure.Hairpins.Any(h => h is null || !IsStaff(h.Staff) || h.EndMeasureOffset < 0 || !IsHeight(h.Y)
                 || !IsPosition(h.PositionNumerator, h.PositionDenominator) || !IsPosition(h.EndPositionNumerator, h.EndPositionDenominator)))
             throw Corrupt($"{where}의 크레셴도·디크레셴도 정보가 올바르지 않습니다.");
+
+        measure.Glissandos ??= new List<ScoreGlissando>();
+        if (measure.Glissandos.Any(g => g is null || !IsStaff(g.Staff) || !IsStaff(g.EndStaff) || g.Voice < 1 || g.EndVoice < 1 || g.EndMeasureOffset < 0
+                || !IsPosition(g.PositionNumerator, g.PositionDenominator) || !IsPosition(g.EndPositionNumerator, g.EndPositionDenominator)))
+            throw Corrupt($"{where}의 글리산도 정보가 올바르지 않습니다.");
+        foreach (var glissando in measure.Glissandos) glissando.Text ??= "";
+
+        measure.Lines ??= new List<ScoreLine>();
+        if (measure.Lines.Any(l => l is null || !Enum.IsDefined(l.Kind) || !IsStaff(l.Staff) || l.EndMeasureOffset < 0 || !IsHeight(l.Y)
+                || l.StartHook is < -1 or > 1 || l.EndHook is < -1 or > 1
+                || !IsPosition(l.PositionNumerator, l.PositionDenominator) || !IsPosition(l.EndPositionNumerator, l.EndPositionDenominator)))
+            throw Corrupt($"{where}의 괄호선·점선·트릴 연장선 정보가 올바르지 않습니다.");
 
         measure.Slurs ??= new List<ScoreSlur>();
         if (measure.Slurs.Any(s => s is null || !IsStaff(s.Staff) || !IsStaff(s.EndStaff) || s.Voice < 1 || s.EndVoice < 1 || s.EndMeasureOffset < 0

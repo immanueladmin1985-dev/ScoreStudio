@@ -799,6 +799,7 @@ public static partial class ScoreLayoutEngine
         DrawOctaveLines(items, placed, staffTops, sp);
         DrawTies(items, placed, slots, staffTops, left + plan.HeaderWidth, right, pendingTies, sp);
         DrawSlurs(items, project, plan, placed, slots, staffTops, left + plan.HeaderWidth, right, pendingSpans, sp);
+        DrawGlissandos(items, project, plan, placed, slots, staffTops, right, sp);
         DrawLyrics(items, placed, rests, staffTops, right, lyricSize, TextMetrics.IsSerifFamily(project.Engraving?.LyricFontFamily), sp);
         var symbolTops = DrawChordSymbols(items, symbols, placed, staffTops, lyricSize, sp);
         DrawDirectionsAndHairpins(items, project, plan, measureLayouts, placed, slots, staffTops, anchors, symbolTops, left + plan.HeaderWidth, right, pendingSpans, sp);
@@ -921,6 +922,7 @@ public static partial class ScoreLayoutEngine
             {
                 var chordX = onsetX[chord.Start] + chord.XOffset * sp;
                 var (top, bottom) = DrawChord(items, chord, chordX, staffTop, sp);
+                DrawArpeggio(items, chord, chordX, staffTop, sp);
                 DrawGraces(items, chord, chordX, (chord.LeftExtent - chord.GraceRoomBefore) * sp,
                     chordX + (Smufl.NoteheadWidth(chord.Value.Type) * (chord.Notes.Any(n => n.Side > 0) ? 2 : 1) + (chord.Value.Dots > 0 ? 0.35 + chord.Value.Dots * 0.6 : 0)) * sp,
                     staffTop, sp);

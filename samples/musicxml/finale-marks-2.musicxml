@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- ScoreStudio sample: arpeggios, string techniques, rehearsal marks, glissandos, brackets, dashes and trill lines as Finale writes them (docs/FINALE_MARKS_2.md). -->
+<score-partwise version="4.0">
+  <work><work-title>남은 Finale 기호</work-title></work>
+  <part-list><score-part id="P1"><part-name>바이올린</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <direction placement="above">
+        <direction-type><rehearsal enclosure="square">A</rehearsal></direction-type>
+      </direction>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><arpeggiate/></notations></note>
+      <note><chord/><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><arpeggiate/></notations></note>
+      <note><chord/><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><arpeggiate/></notations></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><arpeggiate direction="up"/></notations></note>
+      <note><chord/><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><arpeggiate direction="up"/></notations></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><non-arpeggiate type="bottom"/></notations></note>
+      <note><chord/><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><non-arpeggiate type="top"/></notations></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><technical><harmonic/></technical></notations></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><technical><down-bow/></technical></notations></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><technical><up-bow/></technical></notations></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><glissando line-type="wavy" type="start">gliss.</glissando></notations></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><glissando line-type="wavy" type="stop"/></notations></note>
+    </measure>
+    <measure number="3">
+      <direction placement="above">
+        <direction-type><rehearsal enclosure="none">Coda</rehearsal></direction-type>
+      </direction>
+      <direction placement="above">
+        <direction-type><bracket type="start" line-type="solid" line-end="down"/></direction-type>
+      </direction>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><slide line-type="solid" type="start"/></notations></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><slide line-type="solid" type="stop"/></notations></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <direction placement="above">
+        <direction-type><bracket type="stop" line-end="down"/></direction-type>
+      </direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <measure number="4">
+      <direction placement="below">
+        <direction-type><words font-style="italic">cresc.</words></direction-type>
+        <direction-type><dashes type="start"/></direction-type>
+      </direction>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>half</type>
+        <notations><ornaments><trill-mark placement="above"/><wavy-line type="start"/></ornaments></notations></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><wavy-line type="stop"/></ornaments></notations></note>
+      <direction placement="below">
+        <direction-type><dashes type="stop"/></direction-type>
+      </direction>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <measure number="5">
+      <direction placement="below">
+        <direction-type><dynamics><f/></dynamics></direction-type>
+      </direction>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <note><rest/><duration>4</duration><voice>1</voice><type>half</type></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

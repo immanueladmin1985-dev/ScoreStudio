@@ -1,3 +1,5 @@
+using ScoreStudio.Models;
+
 namespace ScoreStudio.Layout;
 
 /// <summary>Grace notes: small notes with stems up before (or after) their note (docs/GRACE_NOTES.md).</summary>
@@ -89,6 +91,50 @@ public static partial class ScoreLayoutEngine
                 items.Add(new GlyphItem(flag, stemX - thickness / 2, top + Smufl.FlagAnchorY(type, true) * sp * g, 4 * sp * g));
             if (columns[i].Any(n => n.Slash))
                 items.Add(new LineItem(stemX - 0.7 * g * sp, top + 1.9 * g * sp, stemX + 1.0 * g * sp, top + 0.5 * g * sp, thickness));
+        }
+    }
+
+    /// <summary>
+    /// The arpeggio before a chord (docs/FINALE_MARKS_2.md): a wavy line from its lowest to its highest note, left of its
+    /// accidentals, with an arrow when the roll has a direction; or a bracket for a non-arpeggio.
+    /// </summary>
+    private static void DrawArpeggio(List<DrawItem> items, PreparedChord chord, double x, double staffTop, double sp)
+    {
+        if (chord.Arpeggio == ArpeggioKind.None) return;
+        var ownLeft = chord.LeftExtent - chord.GraceRoomBefore - NotePreparation.ArpeggioRoom;
+        var lineX = x - ownLeft * sp - 0.7 * sp;
+        var top = StaffY(staffTop, chord.Notes.Max(n => n.Position), sp) - 0.6 * sp;
+        var bottom = StaffY(staffTop, chord.Notes.Min(n => n.Position), sp) + 0.6 * sp;
+        var thickness = Smufl.StemThickness * sp;
+
+        if (chord.Arpeggio == ArpeggioKind.NonArpeggio)
+        {
+            items.Add(new LineItem(lineX, top, lineX, bottom, thickness * 1.5));
+            items.Add(new LineItem(lineX, top, lineX + 0.4 * sp, top, thickness * 1.5));
+            items.Add(new LineItem(lineX, bottom, lineX + 0.4 * sp, bottom, thickness * 1.5));
+            return;
+        }
+
+        // A zigzag of half-space steps.
+        const double step = 0.5;
+        var y = bottom;
+        var left = true;
+        while (y > top)
+        {
+            var next = Math.Max(top, y - step * sp);
+            items.Add(new LineItem(lineX + (left ? -0.18 : 0.18) * sp, y, lineX + (left ? 0.18 : -0.18) * sp, next, thickness * 1.3));
+            (y, left) = (next, !left);
+        }
+
+        if (chord.Arpeggio == ArpeggioKind.Up)
+        {
+            items.Add(new LineItem(lineX, top - 0.1 * sp, lineX - 0.35 * sp, top + 0.5 * sp, thickness * 1.3));
+            items.Add(new LineItem(lineX, top - 0.1 * sp, lineX + 0.35 * sp, top + 0.5 * sp, thickness * 1.3));
+        }
+        else if (chord.Arpeggio == ArpeggioKind.Down)
+        {
+            items.Add(new LineItem(lineX, bottom + 0.1 * sp, lineX - 0.35 * sp, bottom - 0.5 * sp, thickness * 1.3));
+            items.Add(new LineItem(lineX, bottom + 0.1 * sp, lineX + 0.35 * sp, bottom - 0.5 * sp, thickness * 1.3));
         }
     }
 }
