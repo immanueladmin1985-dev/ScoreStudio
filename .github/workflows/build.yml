@@ -11,24 +11,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  # Finale .musx files are opened through denigma (docs/MUSX_IMPORT.md), built here at a fixed commit and shipped next
+  # to ScoreStudio.exe. The static C++ runtime means users need no Visual C++ redistributable. It is a job of its own
+  # because the MSVC environment (e.g. its Platform variable) breaks the .NET build.
+  denigma:
     runs-on: windows-latest
-    permissions:
-      contents: write
     env:
       # The denigma commit the app ships with (docs/MUSX_IMPORT.md, docs/THIRD_PARTY.md).
       DENIGMA_COMMIT: 5a4ae8e613eea75d0724f02a3e49c82ee6e46570
-      DOTNET_NOLOGO: true
-      DOTNET_CLI_TELEMETRY_OPTOUT: true
     steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 8.0.x
-
-      # Finale .musx files are opened through denigma (docs/MUSX_IMPORT.md), built here at a fixed commit and shipped
-      # next to ScoreStudio.exe. The static C++ runtime means users need no Visual C++ redistributable.
       - name: Restore denigma build
         id: denigma-cache
         uses: actions/cache@v4
@@ -59,6 +50,33 @@ jobs:
           Copy-Item $exe.FullName denigma-bin
           Get-ChildItem $exe.DirectoryName -Filter *.dll | Copy-Item -Destination denigma-bin
           Copy-Item (Join-Path $source 'LICENSE') (Join-Path 'denigma-bin' 'LICENSE.txt')
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: denigma-windows
+          path: denigma-bin/
+          if-no-files-found: error
+
+  build:
+    needs: denigma
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Download denigma
+        uses: actions/download-artifact@v5
+        with:
+          name: denigma-windows
+          path: denigma-bin
 
       - name: Check denigma
         shell: pwsh
