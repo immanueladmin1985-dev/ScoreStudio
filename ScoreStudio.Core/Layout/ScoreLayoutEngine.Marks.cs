@@ -82,8 +82,9 @@ public static partial class ScoreLayoutEngine
     {
         foreach (var chord in placed.Where(p => p.Chord.Tremolo > 0))
         {
+            // A little nearer the tip than the head, so the strokes stay clear of the notehead.
             var (x, near, tip) = StemOf(chord, staffTops[chord.Slot], sp);
-            var center = (near + tip) / 2;
+            var center = near + (tip - near) * 0.6;
             var strokes = chord.Chord.Tremolo;
             for (var i = 0; i < strokes; i++)
             {
