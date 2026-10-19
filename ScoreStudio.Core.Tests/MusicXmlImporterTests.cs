@@ -67,6 +67,46 @@ public sealed class MusicXmlImporterTests : IDisposable
         Assert.Equal(new[] { Articulation.Staccatissimo, Articulation.Fermata }, m2.Events[0].Articulations);
     }
 
+    private static string OneMeasure(string attributes, string content) => $"""
+        <score-partwise version="4.0">
+          <part-list><score-part id="P1"><part-name>클라리넷</part-name></score-part></part-list>
+          <part id="P1"><measure number="1">
+            <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time>{attributes}</attributes>
+            {content}
+            <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+          </measure></part>
+        </score-partwise>
+        """;
+
+    [Fact]
+    public void TransposingInstrument_IsKept_AndWrittenBack()
+    {
+        var xml = OneMeasure("<transpose><diatonic>-1</diatonic><chromatic>-2</chromatic></transpose>", "");
+        var result = MusicXmlImporter.ImportXml(xml, "이조");
+        Assert.Empty(result.Warnings);
+        var transpose = Assert.IsType<ScoreTranspose>(result.Project.Parts[0].Transpose);
+        Assert.Equal((-1, -2, 0), (transpose.Diatonic, transpose.Chromatic, transpose.OctaveChange));
+        Assert.Equal("D5", result.Project.Parts[0].Measures[0].Events[0].NotationSpelling); // the written pitch
+
+        var back = MusicXmlImporter.ImportXml(ScoreStudio.Export.MusicXmlExporter.ToXml(result.Project), "다시").Project.Parts[0].Transpose;
+        Assert.Equal((-1, -2, 0), (back!.Diatonic, back.Chromatic, back.OctaveChange));
+    }
+
+    [Fact]
+    public void TempoTextWithAMetronomeNoteSymbol_BecomesOneText()
+    {
+        var xml = OneMeasure("", """
+            <direction placement="above"><direction-type>
+              <words font-weight="bold">Tempo (</words><symbol>metNoteQuarterUp</symbol><words>=120)</words>
+            </direction-type></direction>
+            """);
+        var result = MusicXmlImporter.ImportXml(xml, "빠르기");
+
+        Assert.Empty(result.Warnings);
+        var direction = Assert.Single(result.Project.Parts[0].Measures[0].Directions);
+        Assert.Equal(("Tempo (♩=120)", true), (direction.Text, direction.Bold));
+    }
+
     [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {

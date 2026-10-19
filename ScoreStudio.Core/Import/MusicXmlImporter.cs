@@ -417,6 +417,8 @@ public static class MusicXmlImporter
 
         private int _measureIndex;
 
+        private ScoreTranspose? _transpose;
+
         public PartReader(string name, string label, string instrument, ImportWarningCollector warnings)
         {
             _name = name;
@@ -465,7 +467,7 @@ public static class MusicXmlImporter
                 .ToList();
 
             // Events on staves that were declared later than they were used are clamped in ReadNote.
-            return new ScorePart { Name = _name, Instrument = _instrument, Staves = staves, Measures = measures };
+            return new ScorePart { Name = _name, Instrument = _instrument, Staves = staves, Measures = measures, Transpose = _transpose };
         }
 
         private void Warn(string message) => _warnings.Add(message, _location);
@@ -605,8 +607,31 @@ public static class MusicXmlImporter
                 }
             }
 
-            if (attributes.Element("transpose") is not null)
-                Warn("이조 악기 설정(transpose)은 가져오지 않음 (기보된 음높이로 가져옴)");
+            if (attributes.Element("transpose") is { } transpose) ReadTranspose(transpose);
+        }
+
+        /// <summary>
+        /// A transposing instrument's interval. The written notes are kept as they are; a later change of instrument (a
+        /// different interval) is not kept.
+        /// </summary>
+        private void ReadTranspose(XElement transpose)
+        {
+            static int Number(XElement? element) =>
+                int.TryParse(element?.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : 0;
+            var read = new ScoreTranspose
+            {
+                Diatonic = Number(transpose.Element("diatonic")), Chromatic = Number(transpose.Element("chromatic")),
+                OctaveChange = Number(transpose.Element("octave-change")),
+            };
+            if (read.Diatonic is < -14 or > 14 || read.Chromatic is < -24 or > 24 || read.OctaveChange is < -3 or > 3)
+            {
+                Warn("읽을 수 없는 이조 악기 설정은 무시함");
+                return;
+            }
+
+            if (_transpose is null) _transpose = read;
+            else if ((_transpose.Diatonic, _transpose.Chromatic, _transpose.OctaveChange) != (read.Diatonic, read.Chromatic, read.OctaveChange))
+                Warn("곡 중간에 바뀌는 이조 악기 설정은 처음 것만 가져옴");
         }
 
         private void ReadTime(XElement time, ScoreMeasure measure)
@@ -1240,6 +1265,11 @@ public static class MusicXmlImporter
                         if (words.Count == 0) wordsAt = measure.Directions.Count;
                         words.Add(type);
                         break;
+                    case "symbol" when SymbolText(type.Value.Trim()) is { } symbol:
+                        // Finale writes "Tempo (♩=120)" as words, a SMuFL note and words: the note joins the text.
+                        if (words.Count == 0) wordsAt = measure.Directions.Count;
+                        words.Add(new XElement("words", symbol));
+                        break;
                     case "metronome":
                         AddMetronome(type, measure, staff, position, above);
                         break;
@@ -1256,15 +1286,30 @@ public static class MusicXmlImporter
             // Several <words> in one direction are one text in several fonts (e.g. "rit." and "a tempo"); the first sets the style.
             // The text keeps its place among the direction's other marks (e.g. "Andante" before its metronome mark).
             var text = string.Concat(words.Select(w => w.Value)).Trim();
+            var styled = words.FirstOrDefault(w => w.HasAttributes);
             var item = new ScoreDirection
             {
-                Kind = DirectionKind.Words, Staff = staff, Text = text, Above = above, Y = words.Count > 0 ? DefaultY(words[0]) : null,
-                Italic = words.Count > 0 && (string?)words[0].Attribute("font-style") == "italic",
-                Bold = words.Count > 0 && (string?)words[0].Attribute("font-weight") == "bold",
+                Kind = DirectionKind.Words, Staff = staff, Text = text, Above = above, Y = styled is null ? null : DefaultY(styled),
+                Italic = (string?)styled?.Attribute("font-style") == "italic",
+                Bold = (string?)styled?.Attribute("font-weight") == "bold",
             };
             if (text.Length > 0 && TrySetFraction(position, (n, d) => (item.PositionNumerator, item.PositionDenominator) = (n, d)))
                 measure.Directions.Insert(wordsAt, item);
         }
+
+        /// <summary>The text for a SMuFL glyph that stands among words (metronome notes, digits); null for others.</summary>
+        private static string? SymbolText(string glyph) => glyph switch
+        {
+            "metNoteDoubleWhole" => "𝅜",
+            "metNoteWhole" => "𝅝",
+            "metNoteHalfUp" or "metNoteHalfDown" => "𝅗𝅥",
+            "metNoteQuarterUp" or "metNoteQuarterDown" => "♩",
+            "metNote8thUp" or "metNote8thDown" => "♪",
+            "metNote16thUp" or "metNote16thDown" => "𝅘𝅥𝅯",
+            "metAugmentationDot" => ".",
+            _ when glyph.StartsWith("timeSig", StringComparison.Ordinal) && glyph.Length == 8 && char.IsAsciiDigit(glyph[7]) => glyph[7..],
+            _ => null,
+        };
 
         private void AddDirection(ScoreMeasure measure, ScoreDirection direction, Rational position)
         {

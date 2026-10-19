@@ -11,6 +11,9 @@ public sealed class AppSettings
     /// <summary>Audiveris.exe chosen by the user for music recognition; null to look where its installers put it.</summary>
     public string? AudiverisPath { get; set; }
 
+    /// <summary>denigma chosen by the user to open Finale .musx files; null to look next to the program (docs/MUSX_IMPORT.md).</summary>
+    public string? DenigmaPath { get; set; }
+
     /// <summary>The user's key changes ("Speedy:StepUp" → ["Up"]); commands not listed keep their default keys.</summary>
     public Dictionary<string, List<string>>? KeyBindings { get; set; }
 

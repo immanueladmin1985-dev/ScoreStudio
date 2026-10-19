@@ -130,7 +130,12 @@
    - [x] 2-B: 악보 화면에 그리기 (자동 테스트, SVG 미리보기로 확인, CI 미리보기 `preview-musicxml-finale-marks.png`)
    - [x] 2-C: 도구로 넣고 지우기 (Finale의 Articulation·Expression·Smart Shape 도구, 자동 테스트. 단축키 기본값은 추정이므로 사용자 확인 필요)
    - [ ] Windows PC에서 Finale 파일("다윗의 노래")로 경고가 줄었는지 확인
-3. [ ] `.musx` 열기 (별도 변환기, 사용자가 제공한 .musx 파일로 검증)
+3. `.musx` 열기 — 설계와 결과: `docs/MUSX_IMPORT.md`
+   - [x] denigma(MIT)로 MusicXML을 만들어 가져오기, 원본 보호, 오류 안내 (자동 테스트)
+   - [x] 공개 시험 파일 220개 모두 성공, 이조 악기·빠르기 음표 기호 가져오기(스키마 18)
+   - [x] Windows CI에서 denigma 빌드·배포, 시험 파일 8개를 실제 denigma로 여는 테스트
+   - [ ] 사용자가 가진 실제 .musx 파일로 확인
+   - [ ] 남은 경고 줄이기: 꾸밈음, 울림 붙임줄, 장식음 기호(트릴 등), 글리산도, 리허설 마크, 아르페지오
 4. [ ] Finale식 조작 맞추기 (사용자가 써 본 결과 반영)
 
 ## Sprint 5 — 사보/출력

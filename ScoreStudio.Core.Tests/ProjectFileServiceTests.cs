@@ -391,6 +391,19 @@ public sealed class ProjectFileServiceTests : IDisposable
         Assert.Contains("\"Fermata\"", expected);
     }
 
+    [Fact]
+    public void Load_Version17File_HasNoTransposition_AndTranspositionSurvivesSaveAndReopen()
+    {
+        Assert.Null(ProjectFileService.Parse("""{ "SchemaVersion": 17, "Parts": [ {} ] }""").Parts[0].Transpose);
+
+        var project = ScoreProject.CreateNew();
+        project.Parts[0].Transpose = new ScoreTranspose { Diatonic = -5, Chromatic = -9, OctaveChange = -1 };
+        var path = PathFor("transpose.scoreproj");
+        ProjectFileService.Save(path, project);
+        var transpose = ProjectFileService.Load(path).Parts[0].Transpose!;
+        Assert.Equal((-5, -9, -1), (transpose.Diatonic, transpose.Chromatic, transpose.OctaveChange));
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -463,6 +476,7 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Slurs": [ { "EndStaff": 1 } ] } ] } ] }""", "이음줄" },
         { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Slurs": [ { "Voice": 0 } ] } ] } ] }""", "이음줄" },
         { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Events": [ { "Articulations": [ "Trill" ] } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 18, "Parts": [ { "Transpose": { "Chromatic": 40 } } ] }""", "이조 악기" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Percussion" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };

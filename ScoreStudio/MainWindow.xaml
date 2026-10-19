@@ -17,7 +17,8 @@
                     <MenuItem Header="MusicXML..." Click="ImportMusicXml_Click"/>
                     <MenuItem Header="PDF·그림에서 악보 인식..." Click="RecognizeScore_Click"
                               ToolTip="스캔한 PDF나 캡처한 악보 그림을 Audiveris로 읽어 악보로 바꿉니다. 여러 개를 고르면 이름 순서대로 이어 붙입니다."/>
-                    <MenuItem Header="Finale 파일(.musx)..." IsEnabled="False" ToolTipService.ShowOnDisabled="True" ToolTip="아직 지원하지 않습니다."/>
+                    <MenuItem Header="Finale 파일(.musx)..." Click="ImportMusx_Click"
+                              ToolTip="Finale 없이 .musx 파일을 엽니다. 함께 들어 있는 denigma가 MusicXML로 바꾼 뒤 가져옵니다. 원본 파일은 바꾸지 않습니다."/>
                 </MenuItem>
                 <MenuItem Header="내보내기">
                     <MenuItem Header="PDF..." IsEnabled="False" ToolTipService.ShowOnDisabled="True" ToolTip="다음 개발 단계에서 구현합니다."/>
@@ -258,7 +259,7 @@
                              ToolTip="예: C, Am7, F#m7b5, Bbmaj7/D. 공백이나 Enter: 넣고 다음 음표로. 빈 칸에서 Delete: 그 자리의 코드 이름 지우기, Esc: 악보로 돌아가기."/>
                     <TextBlock Text="개발 메모" FontWeight="SemiBold"/>
                     <TextBlock TextWrapping="Wrap" Foreground="#697586" Margin="0,4,0,0"
-                               Text="악보 화면은 오선, 음자리표, 조표, 박자표, 마디선, 음표, 쉼표, 빔(음표 잇기), 붙임줄, 잇단음표, 가사, 코드 이름, 도돌이표·볼타, 음자리표 변경, 옥타브 기호, 셈여림·크레셴도·이음줄·아티큘레이션·글자 지시를 표시합니다. 키보드와 마우스(마우스 입력, N)로 음표·쉼표를 입력하고 고칠 수 있습니다(편집 > 키보드 입력 방법). 셈여림·글자·메트로놈은 표현 도구, 아티큘레이션은 아티큘 도구, 이음줄·크레셴도는 이음줄(스마트 도형) 도구로 넣습니다. 파일 > 내보내기 > MusicXML로 Finale 등에서 열 수 있는 파일을 만듭니다. 편집 메뉴에서 조표·박자표·음자리표를 바꿀 수 있고, Ctrl+3(셋잇단)처럼 잇단음표를 넣을 수 있습니다. 가사(Ctrl+L)와 코드 이름(Ctrl+K)은 이 칸 위의 입력 칸에서 넣습니다. MUSX 변환, PDF 출력은 아직 지원하지 않습니다."/>
+                               Text="악보 화면은 오선, 음자리표, 조표, 박자표, 마디선, 음표, 쉼표, 빔(음표 잇기), 붙임줄, 잇단음표, 가사, 코드 이름, 도돌이표·볼타, 음자리표 변경, 옥타브 기호, 셈여림·크레셴도·이음줄·아티큘레이션·글자 지시를 표시합니다. 키보드와 마우스(마우스 입력, N)로 음표·쉼표를 입력하고 고칠 수 있습니다(편집 > 키보드 입력 방법). 셈여림·글자·메트로놈은 표현 도구, 아티큘레이션은 아티큘 도구, 이음줄·크레셴도는 이음줄(스마트 도형) 도구로 넣습니다. 파일 > 내보내기 > MusicXML로 Finale 등에서 열 수 있는 파일을 만듭니다. 편집 메뉴에서 조표·박자표·음자리표를 바꿀 수 있고, Ctrl+3(셋잇단)처럼 잇단음표를 넣을 수 있습니다. 가사(Ctrl+L)와 코드 이름(Ctrl+K)은 이 칸 위의 입력 칸에서 넣습니다. Finale 파일(.musx)은 파일 > 가져오기에서 엽니다. PDF 출력은 아직 지원하지 않습니다."/>
                 </StackPanel>
             </Border>
         </Grid>

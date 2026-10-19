@@ -389,6 +389,60 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Opens a Finale .musx file through denigma (docs/MUSX_IMPORT.md). When denigma is not next to the program, the user
+    /// may point to it; the choice is remembered.
+    /// </summary>
+    private async void ImportMusx_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ConfirmDiscard()) return;
+        var dialog = new OpenFileDialog { Filter = "Finale 파일 (*.musx)|*.musx|모든 파일 (*.*)|*.*", Title = "Finale 파일(.musx) 열기" };
+        if (dialog.ShowDialog(this) != true) return;
+
+        var denigma = DenigmaLocator.Find(_settings.DenigmaPath);
+        if (denigma is null)
+        {
+            var answer = MessageBox.Show(this,
+                "Finale 파일을 바꾸는 프로그램 denigma를 찾지 못했습니다. 보통은 ScoreStudio와 함께 tools\\denigma 폴더에 들어 있습니다.\n\n"
+                + $"denigma.exe를 직접 고를까요? (내려받는 곳: {DenigmaLocator.ProjectPage})",
+                "denigma 없음", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            var pick = new OpenFileDialog { Filter = "denigma (denigma.exe)|denigma.exe|프로그램 (*.exe)|*.exe", Title = "denigma.exe 고르기" };
+            if (answer != MessageBoxResult.Yes || pick.ShowDialog(this) != true)
+            {
+                StatusText.Content = "denigma가 없어 Finale 파일을 열지 않았습니다.";
+                return;
+            }
+
+            denigma = pick.FileName;
+            _settings.DenigmaPath = denigma;
+            _settings.Save(SettingsPath);
+        }
+
+        var path = dialog.FileName;
+        var fileName = System.IO.Path.GetFileName(path);
+        StatusText.Content = $"Finale 파일을 바꾸는 중: {fileName}";
+        Mouse.OverrideCursor = Cursors.Wait;
+        ImportResult result;
+        try
+        {
+            result = await Task.Run(() => MusxImporter.ImportFile(path, denigma));
+        }
+        catch (Exception ex)
+        {
+            ShowFileError("Finale 파일을 열 수 없습니다.", "Finale 파일 오류", ex);
+            StatusText.Content = "Finale 파일 열기 실패: 현재 악보는 그대로 유지됩니다.";
+            return;
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
+
+        UseProject(result.Project);
+        StatusText.Content = $"Finale 파일 가져오기 완료: {fileName} (경고 {result.Warnings.Count}종류) · 보관하려면 저장하세요.";
+        new ImportReportWindow(fileName, result) { Owner = this, Title = "Finale 파일 가져오기 결과" }.ShowDialog();
+    }
+
+    /// <summary>
     /// Reads scores from PDF files and pictures with Audiveris (docs/OMR_IMPORT.md); several files are joined in the
     /// order their names number them.
     /// </summary>
@@ -817,7 +871,7 @@ public partial class MainWindow : Window
         RefreshScore();
         RefreshEditState();
         ImportStatusText.Text = string.IsNullOrWhiteSpace(Project.ImportedFrom)
-            ? "MusicXML 가져오기 지원 · MUSX 미구현"
+            ? "MusicXML·Finale(.musx) 가져오기 지원"
             : $"가져온 원본: {System.IO.Path.GetFileName(Project.ImportedFrom)}";
     }
 
@@ -1153,7 +1207,7 @@ public partial class MainWindow : Window
     private void About_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(this,
-            "ScoreStudio 개발 버전\n\n지원: 프로젝트 저장/열기, 악보 화면(오선·음자리표·조표·박자표·마디선·음표·쉼표·빔·붙임줄·잇단음표·가사·코드 이름·도돌이표·볼타·음자리표 변경·옥타브 기호, 여러 페이지, 확대/축소), MusicXML 가져오기·내보내기, PDF·그림에서 악보 인식(Audiveris), 키보드와 마우스로 음표·쉼표 입력과 고치기, 조표·박자표·음자리표 바꾸기, 잇단음표·가사·코드 이름 입력(실행 취소 포함), 셈여림·크레셴도·이음줄·아티큘레이션·글자 지시·메트로놈 넣기(표현·아티큘레이션·스마트 도형 도구)\n아직 가져오지 않음: 장식음 기호, 페달, 세뇨·코다 등(가져오기 결과 창에 경고로 표시)\n아직 지원하지 않음: MUSX 변환, PDF 출력",
+            "ScoreStudio 개발 버전\n\n지원: 프로젝트 저장/열기, 악보 화면(오선·음자리표·조표·박자표·마디선·음표·쉼표·빔·붙임줄·잇단음표·가사·코드 이름·도돌이표·볼타·음자리표 변경·옥타브 기호, 여러 페이지, 확대/축소), MusicXML 가져오기·내보내기, PDF·그림에서 악보 인식(Audiveris), 키보드와 마우스로 음표·쉼표 입력과 고치기, 조표·박자표·음자리표 바꾸기, 잇단음표·가사·코드 이름 입력(실행 취소 포함), 셈여림·크레셴도·이음줄·아티큘레이션·글자 지시·메트로놈 넣기(표현·아티큘레이션·스마트 도형 도구)\n아직 가져오지 않음: 장식음 기호, 페달, 세뇨·코다 등(가져오기 결과 창에 경고로 표시)\nFinale 파일(.musx) 열기(denigma 사용)\n아직 지원하지 않음: PDF 출력",
             "개발 상태", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 

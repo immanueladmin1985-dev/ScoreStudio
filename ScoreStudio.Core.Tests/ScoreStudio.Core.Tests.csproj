@@ -23,6 +23,7 @@
   <ItemGroup>
     <None Include="..\samples\*.scoreproj" Link="samples\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\samples\musicxml\*.musicxml" Link="samples\musicxml\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\samples\musx\*.musx" Link="samples\musx\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\samples\omr\*.png" Link="samples\omr\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

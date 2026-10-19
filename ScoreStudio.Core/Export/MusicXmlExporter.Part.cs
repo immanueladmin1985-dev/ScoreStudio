@@ -381,6 +381,13 @@ public static partial class MusicXmlExporter
                     new XAttribute("print-object", measure.HiddenStaves.Contains(staff) ? "no" : "yes")));
             }
 
+            if (previous is null && _part.Transpose is { } transpose)
+            {
+                var element = new XElement("transpose", new XElement("diatonic", transpose.Diatonic), new XElement("chromatic", transpose.Chromatic));
+                if (transpose.OctaveChange != 0) element.Add(new XElement("octave-change", transpose.OctaveChange));
+                attributes.Add(element);
+            }
+
             if (attributes.HasElements) _measure.Add(attributes);
         }
 

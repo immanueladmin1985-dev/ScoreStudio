@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 17;
+    public const int CurrentSchemaVersion = 18;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -60,6 +60,25 @@ public sealed class ScorePart
     public List<ScoreStaff> Staves { get; set; } = new() { new() };
 
     public List<ScoreMeasure> Measures { get; set; } = new();
+
+    /// <summary>
+    /// For a transposing instrument (e.g. clarinet in B♭): how its written notes differ from the sounding ones. The notes
+    /// are kept and shown as written; this is carried so the score keeps sounding right in other programs. Null for none.
+    /// </summary>
+    public ScoreTranspose? Transpose { get; set; }
+}
+
+/// <summary>MusicXML's &lt;transpose&gt;: the steps and semitones to add to the written pitch to get the sounding pitch.</summary>
+public sealed class ScoreTranspose
+{
+    /// <summary>Diatonic steps, e.g. −1 for an instrument in B♭.</summary>
+    public int Diatonic { get; set; }
+
+    /// <summary>Semitones, e.g. −2 for an instrument in B♭.</summary>
+    public int Chromatic { get; set; }
+
+    /// <summary>Whole octaves, e.g. −1 for a tenor saxophone besides its −1/−2.</summary>
+    public int OctaveChange { get; set; }
 }
 
 /// <summary>

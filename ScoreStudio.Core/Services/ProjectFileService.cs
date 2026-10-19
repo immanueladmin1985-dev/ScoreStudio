@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations).
+        // hairpins, slurs and articulations; version 17: transposing instruments).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -217,6 +217,9 @@ public static class ProjectFileService
             part.Name ??= "";
             part.Instrument ??= "Unknown";
             part.Measures ??= new List<ScoreMeasure>();
+            if (part.Transpose is { } transpose
+                && (transpose.Diatonic is < -14 or > 14 || transpose.Chromatic is < -24 or > 24 || transpose.OctaveChange is < -3 or > 3))
+                throw Corrupt($"{p + 1}번째 파트의 이조 악기 설정이 올바르지 않습니다.");
 
             if (part.Staves is null || part.Staves.Count == 0)
                 part.Staves = new List<ScoreStaff> { new() };

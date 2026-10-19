@@ -22,5 +22,7 @@
   <ItemGroup>
     <Content Include="..\samples\*.scoreproj" Link="samples\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\samples\musicxml\*.musicxml" Link="samples\musicxml\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\samples\musx\*.musx" Link="samples\musx\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\samples\musx\README.md" Link="samples\musx\README.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -27,3 +27,16 @@
 | 유지보수 | 활발함(5.10: 2026년 3월, 5.11: 2026년 7월). |
 | 함께 쓰는 자료 | Tesseract 언어 파일 `kor`, `eng` (tessdata 4.1.0, Apache-2.0). ScoreStudio가 처음 인식할 때 Audiveris 설정 폴더로 받는다. |
 | 시험용 그림 | `samples/omr/*.png`는 ScoreStudio 샘플 악보(직접 만든 것)를 150dpi로 그린 그림이다. |
+
+## denigma (Finale .musx 변환, 앱과 함께 배포)
+| 항목 | 내용 |
+|---|---|
+| 용도 | Finale `.musx` 파일을 MusicXML로 바꾼다 (`docs/MUSX_IMPORT.md`). ScoreStudio는 별도 프로세스로 실행해 출력 파일만 읽는다. |
+| 버전 | 4.0.0, 커밋 `5a4ae8e613eea75d0724f02a3e49c82ee6e46570` (CI의 `DENIGMA_COMMIT`) |
+| 제작 | Robert G. Patterson, Chris Roode, https://github.com/rpatters1/denigma (openmusx/denigma) |
+| 라이선스 | MIT. 함께 쓰는 musxdom(MIT, Robert G. Patterson), pugixml(MIT), nlohmann/json(MIT), zlib(zlib License), mnxdom·mx·smufl-mapping 등은 denigma가 빌드할 때 받는다. |
+| 배포 방식 | CI가 위 커밋을 Windows에서 빌드해(C++ 런타임은 정적 링크) `tools\denigma\denigma.exe`로 넣고 `LICENSE.txt`를 함께 둔다. |
+| 유지보수 | 활발함(2026년 10월에도 갱신). Finale과 관계없는 독립 프로젝트이며 Finale 코드를 포함하지 않는다. MusicXML 변환은 저자가 "개발 중"으로 표시한다. |
+| 시험용 파일 | `samples/musx/*.musx` 8개는 denigma·musxdom 저장소의 MIT 시험 파일이다(`samples/musx/README.md`). |
+
+denigma 커밋을 올리면 이 표, `.github/workflows/build.yml`의 `DENIGMA_COMMIT`, `docs/MUSX_IMPORT.md`의 시험 결과를 함께 고친다.
