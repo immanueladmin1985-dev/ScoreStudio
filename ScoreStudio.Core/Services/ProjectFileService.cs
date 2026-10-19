@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations; version 17: transposing instruments).
+        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -318,6 +318,10 @@ public static class ProjectFileService
                     item.Articulations ??= new List<Articulation>();
                     if (item.Articulations.Any(a => !Enum.IsDefined(a)))
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 아티큘레이션 정보가 올바르지 않습니다.");
+
+                    item.GraceNotes ??= new List<ScoreGraceNote>();
+                    if (item.GraceNotes.Any(g => g is null || g.MidiPitch is < 0 or > 127 || !ScoreGraceNote.Types.Contains(g.Type ?? "")))
+                        throw Corrupt($"{where}의 {e + 1}번째 음표의 꾸밈음 정보가 올바르지 않습니다.");
 
                     item.ExtendEnds ??= new List<int>();
                     if (item.ExtendEnds.Any(v => v < 1))

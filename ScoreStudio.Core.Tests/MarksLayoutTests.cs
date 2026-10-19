@@ -155,4 +155,25 @@ public sealed class MarksLayoutTests
         Assert.Equal(2, layout.Pages[0].Systems.Count);
         Assert.Equal(2, layout.Pages[0].Items.OfType<CurveItem>().Count());
     }
+
+    [Fact]
+    public void GraceNotes_AreSmall_BeforeTheirNote_WithASlashOrABeam()
+    {
+        var slashed = Note("C5", 72, 0);
+        slashed.GraceNotes.Add(new ScoreGraceNote { MidiPitch = 74, NotationSpelling = "D5", Slash = true });
+        var beamed = Note("G5", 79, 1);
+        beamed.GraceNotes.Add(new ScoreGraceNote { MidiPitch = 76, NotationSpelling = "E5", Type = "16th" });
+        beamed.GraceNotes.Add(new ScoreGraceNote { MidiPitch = 77, NotationSpelling = "F5", Type = "16th" });
+        var (page, _) = Layout(Score(1, slashed, beamed));
+
+        var small = 4 * Sp * 0.6;
+        var graceHeads = page.Items.OfType<GlyphItem>().Where(g => g.Glyph == Smufl.NoteheadBlack && Math.Abs(g.Size - small) < 1e-9).OrderBy(g => g.X).ToList();
+        Assert.Equal(3, graceHeads.Count);
+        var mainHeads = page.Items.OfType<GlyphItem>().Where(g => g.Glyph == Smufl.NoteheadBlack && Math.Abs(g.Size - 4 * Sp) < 1e-9).OrderBy(g => g.X).ToList();
+        Assert.True(graceHeads[0].X < mainHeads[0].X && graceHeads[2].X < mainHeads[1].X && graceHeads[1].X > mainHeads[0].X, "each grace comes just before its note");
+
+        Assert.Single(page.Items.OfType<GlyphItem>(), g => g.Glyph == Smufl.Flag(NoteType.Eighth, true) && Math.Abs(g.Size - small) < 1e-9);
+        Assert.Equal(2, page.Items.OfType<BeamItem>().Count()); // two beams for the 16th grace notes
+        Assert.Single(page.Items.OfType<LineItem>(), l => l.X1 < l.X2 && l.Y1 > l.Y2 && l.Y1 < graceHeads[0].Y); // the slash
+    }
 }

@@ -108,6 +108,23 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void GraceNotes_GoToTheNoteAfterThem_OrAfterTheLastNoteOfTheMeasure()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("grace-notes.musicxml"));
+        Assert.Empty(result.Warnings); // the slur from the grace note to its note is not warned about
+        var (m1, m2) = (result.Project.Parts[0].Measures[0], result.Project.Parts[0].Measures[1]);
+
+        string Graces(ScoreEvent e) => string.Join(" ", e.GraceNotes.Select(g =>
+            $"{(g.Chord ? "+" : "")}{g.NotationSpelling}/{g.Type}{(g.Slash ? "/slash" : "")}{(g.After ? "/after" : "")}"));
+        Assert.Equal(new[] { "D5/eighth/slash", "E5/16th F5/16th" }, m1.Events.Select(Graces));
+        Assert.Equal("F#4/eighth +A4/eighth A4/16th/after B4/16th/after", Graces(Assert.Single(m2.Events)));
+
+        // Grace notes take no time: the measures hold exactly their notes.
+        Assert.Equal(new[] { (0, 1), (1, 1) }, m1.Events.Select(e => (e.PositionNumerator, e.DurationNumerator)));
+        Assert.Empty(m1.Slurs);
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -176,7 +193,7 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
-    public void UnsupportedFeatures_AreReportedByKindWithCounts_AndGraceNotesAreSkipped()
+    public void UnsupportedFeatures_AreReportedByKindWithCounts_AndGraceNotesGoToTheirNote()
     {
         var result = MusicXmlImporter.ImportFile(Sample("unsupported-features.musicxml"));
         var warnings = result.Warnings.ToDictionary(w => w.Message, w => w.Count);
@@ -185,16 +202,17 @@ public sealed class MusicXmlImporterTests : IDisposable
             new Dictionary<string, int>
             {
                 ["페달"] = 1,
-                ["꾸밈음"] = 1,
                 ["장식음 기호(트릴, 턴 등)"] = 1,
                 ["기타 아티큘레이션(숨표, 중간 휴지 등)"] = 1,
             },
             warnings);
-        Assert.Equal("플루트 1마디", result.Warnings.First(w => w.Message == "꾸밈음").FirstLocation);
+        Assert.Equal("플루트 1마디", result.Warnings.First(w => w.Message == "페달").FirstLocation);
 
         var part = result.Project.Parts.Single();
         Assert.Equal(ClefType.Treble, part.Staves.Single().Clef);
         Assert.DoesNotContain(part.Measures.SelectMany(m => m.Events), e => e.NotationSpelling == "D5");
+        // Since schema version 19 the grace note D5 is kept on the note after it, taking no time.
+        Assert.Equal("D5", Assert.Single(part.Measures[0].Events[0].GraceNotes).NotationSpelling);
         Assert.Equal(new[] { "노", null, "래" }, part.Measures[0].Events.Select(Verse1));
 
         // Imported since schema version 17: dynamics, slurs, articulations and fermatas.

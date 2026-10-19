@@ -162,6 +162,7 @@ public sealed class PageRenderingTests
     [InlineData("source-widths")]
     [InlineData("tuplets")]
     [InlineData("finale-marks")]
+    [InlineData("grace-notes")]
     public void ImportedMusicXml_DrawsClefsAndNoteheadsWhereTheLayoutPutsThem(string sample)
     {
         RunSta(() =>

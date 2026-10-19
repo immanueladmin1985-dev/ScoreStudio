@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- ScoreStudio sample: grace notes as Finale writes them (docs/GRACE_NOTES.md): a slashed grace with a slur to its note,
+     a beamed group of 16ths, a grace chord with an accidental, and grace notes at the end of a measure. -->
+<score-partwise version="4.0">
+  <work><work-title>꾸밈음</work-title></work>
+  <part-list><score-part id="P1"><part-name>플루트</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>2</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note><grace slash="yes"/><pitch><step>D</step><octave>5</octave></pitch><voice>1</voice><type>eighth</type><stem>up</stem>
+        <notations><slur type="start" number="1"/></notations></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><slur type="stop" number="1"/></notations></note>
+      <note><grace slash="no"/><pitch><step>E</step><octave>5</octave></pitch><voice>1</voice><type>16th</type><stem>up</stem><beam number="1">begin</beam><beam number="2">begin</beam></note>
+      <note><grace slash="no"/><pitch><step>F</step><octave>5</octave></pitch><voice>1</voice><type>16th</type><stem>up</stem><beam number="1">end</beam><beam number="2">end</beam></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <measure number="2">
+      <note><grace/><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><voice>1</voice><type>eighth</type><accidental>sharp</accidental><stem>up</stem></note>
+      <note><grace/><chord/><pitch><step>A</step><octave>4</octave></pitch><voice>1</voice><type>eighth</type><stem>up</stem></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type></note>
+      <note><grace slash="no"/><pitch><step>A</step><octave>4</octave></pitch><voice>1</voice><type>16th</type><stem>up</stem><beam number="1">begin</beam><beam number="2">begin</beam></note>
+      <note><grace slash="no"/><pitch><step>B</step><octave>4</octave></pitch><voice>1</voice><type>16th</type><stem>up</stem><beam number="1">end</beam><beam number="2">end</beam></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

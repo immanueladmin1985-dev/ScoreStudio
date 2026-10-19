@@ -12,6 +12,12 @@ namespace ScoreStudio.Layout;
 /// <param name="TieToNext">A tie runs from this note to the next note of the same pitch.</param>
 internal sealed record PreparedNote(int Position, int? Accidental, int Side, int AccidentalColumn, int Midi, bool TieToNext);
 
+/// <summary>A grace note ready to draw (docs/GRACE_NOTES.md).</summary>
+/// <param name="Position">Staff position in half spaces, as for <see cref="PreparedNote"/>.</param>
+/// <param name="Accidental">Alteration to print (it differs from the key signature), or null.</param>
+/// <param name="Chord">Shares a stem with the grace note before it.</param>
+internal sealed record PreparedGrace(int Position, int? Accidental, NoteType Type, bool Slash, bool Chord, bool After);
+
 /// <summary>Notes of one voice that start together on one staff (a chord or a single note), or a rest.</summary>
 internal sealed class PreparedChord
 {
@@ -52,6 +58,12 @@ internal sealed class PreparedChord
 
     /// <summary>Articulations and fermatas of every note in the chord (or of the rest), in enum order.</summary>
     public IReadOnlyList<Articulation> Articulations { get; init; } = Array.Empty<Articulation>();
+
+    /// <summary>Grace notes before and after the chord or rest.</summary>
+    public IReadOnlyList<PreparedGrace> Graces { get; init; } = Array.Empty<PreparedGrace>();
+
+    /// <summary>The part of <see cref="LeftExtent"/> taken by the grace notes before the chord, in staff spaces.</summary>
+    public double GraceRoomBefore { get; init; }
 
     /// <summary>
     /// Shift to the right of the onset, in staff spaces: one of two voices moves aside when their notes would touch (a
@@ -215,6 +227,7 @@ internal static class NotePreparation
         public required IReadOnlyList<ScoreLyric> Lyrics { get; init; }
         public required IReadOnlyList<int> ExtendEnds { get; init; }
         public required IReadOnlyList<Articulation> Articulations { get; init; }
+        public required IReadOnlyList<PreparedGrace> Graces { get; init; }
         public required IReadOnlyList<BeamType> Beams { get; set; }
 
         /// <summary>The source's stem direction for the chord, if it gives one.</summary>
@@ -251,6 +264,7 @@ internal static class NotePreparation
 
                 if (first.Kind == "Rest")
                 {
+                    var restGraces = PrepareGraces(first, measure, clef);
                     var isMeasureRest = Start(first).Sign == 0 && duration >= nominal;
                     var rest = new PreparedChord
                     {
@@ -258,7 +272,8 @@ internal static class NotePreparation
                         Duration = isMeasureRest ? Rational.Max(duration, nominal) : duration,
                         IsRest = true, IsMeasureRest = isMeasureRest, VoiceRole = role, OctaveShift = first.OctaveShift,
                         Articulations = first.Articulations.Distinct().OrderBy(a => a).ToList(),
-                        RightExtent = isMeasureRest ? 0 : Smufl.RestWidth(value.Type) + DotsWidth(value),
+                        Graces = restGraces, GraceRoomBefore = GraceRoom(restGraces, after: false), LeftExtent = GraceRoom(restGraces, after: false),
+                        RightExtent = (isMeasureRest ? 0 : Smufl.RestWidth(value.Type) + DotsWidth(value)) + GraceRoom(restGraces, after: true),
                     };
                     result.Add(rest);
                     staffRests.Add(rest);
@@ -302,6 +317,7 @@ internal static class NotePreparation
                     Lyrics = chordEvents.Select(e => e.Lyrics).FirstOrDefault(l => l is { Count: > 0 }) ?? new List<ScoreLyric>(),
                     ExtendEnds = chordEvents.SelectMany(e => e.ExtendEnds).Distinct().ToList(),
                     Articulations = chordEvents.SelectMany(e => e.Articulations).Distinct().OrderBy(a => a).ToList(),
+                    Graces = PrepareGraces(chordEvents.FirstOrDefault(e => e.GraceNotes.Count > 0) ?? first, measure, clef),
                 });
             }
 
@@ -311,7 +327,7 @@ internal static class NotePreparation
             {
                 var stemUp = chord.GroupStemUp ?? chord.SourceStemUp ?? StemUp(chord.Role, chord.Notes.Select(n => n.Position).ToList());
                 built[chord] = BuildChord(partIndex, staff, chord.First.Voice, Start(chord.First), Duration(chord.First), chord.Value, stemUp, chord.Role,
-                    chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds, chord.Articulations);
+                    chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds, chord.Articulations, chord.Graces);
                 result.Add(built[chord]);
             }
 
@@ -445,10 +461,62 @@ internal static class NotePreparation
 
     private static double DotsWidth(NoteValue value) => value.Dots == 0 ? 0 : 0.35 + value.Dots * 0.6;
 
+    /// <summary>Grace notes are drawn at this size of normal notes.</summary>
+    public const double GraceScale = 0.6;
+
+    /// <summary>
+    /// Room in staff spaces for a chord's grace notes before it (<paramref name="after"/> false) or after it: a column per
+    /// grace chord, its accidentals and a gap.
+    /// </summary>
+    public static double GraceRoom(IEnumerable<PreparedGrace> graces, bool after)
+    {
+        var columns = GraceColumns(graces.Where(g => g.After == after).ToList());
+        if (columns.Count == 0) return 0;
+        return columns.Sum(c => GraceColumnWidth(c)) + 0.3;
+    }
+
+    /// <summary>Grace notes grouped into chords (a column each), in order.</summary>
+    public static List<List<PreparedGrace>> GraceColumns(IReadOnlyList<PreparedGrace> graces)
+    {
+        var columns = new List<List<PreparedGrace>>();
+        foreach (var grace in graces)
+        {
+            if (grace.Chord && columns.Count > 0) columns[^1].Add(grace);
+            else columns.Add(new List<PreparedGrace> { grace });
+        }
+
+        return columns;
+    }
+
+    public static double GraceColumnWidth(IReadOnlyList<PreparedGrace> column) =>
+        (Smufl.NoteheadWidth(NoteType.Quarter) + 0.4) * GraceScale
+        + (column.Any(g => g.Accidental is not null) ? (AccidentalColumnWidth + 0.1) * GraceScale : 0);
+
+    /// <summary>A note's grace notes in its key and clef, written an octave off under an octave line like the note.</summary>
+    private static List<PreparedGrace> PrepareGraces(ScoreEvent first, ScoreMeasure measure, ClefType clef)
+    {
+        var graces = new List<PreparedGrace>();
+        foreach (var grace in first.GraceNotes)
+        {
+            var pitch = Notation.Spell(new ScoreEvent { MidiPitch = grace.MidiPitch, NotationSpelling = grace.NotationSpelling }, measure.KeyFifths);
+            pitch = pitch with { Octave = pitch.Octave - first.OctaveShift };
+            var type = grace.Type switch
+            {
+                "half" => NoteType.Half, "quarter" => NoteType.Quarter, "16th" => NoteType.Sixteenth,
+                "32nd" => NoteType.ThirtySecond, "64th" => NoteType.SixtyFourth, _ => NoteType.Eighth,
+            };
+            int? accidental = pitch.Alter != Notation.KeyAlter(measure.KeyFifths, pitch.Step) ? pitch.Alter : null;
+            graces.Add(new PreparedGrace(Notation.StaffPosition(pitch, clef), accidental, type, grace.Slash, grace.Chord, grace.After));
+        }
+
+        return graces;
+    }
+
     private static PreparedChord BuildChord(
         int partIndex, int staff, int voice, Rational start, Rational duration, NoteValue value, bool stemUp, int role,
         List<(int Position, int? Accidental, int Midi, bool Tie)> notes, int octaveShift, IReadOnlyList<BeamType> beams,
-        IReadOnlyList<ScoreLyric> lyrics, IReadOnlyList<int> extendEnds, IReadOnlyList<Articulation> articulations)
+        IReadOnlyList<ScoreLyric> lyrics, IReadOnlyList<int> extendEnds, IReadOnlyList<Articulation> articulations,
+        IReadOnlyList<PreparedGrace> graces)
     {
         var sorted = notes.OrderBy(n => n.Position).ToList();
         var sides = new int[sorted.Count];
@@ -489,10 +557,10 @@ internal static class NotePreparation
         {
             PartIndex = partIndex, Staff = staff, Voice = voice, Start = start, Duration = duration, Value = value, IsRest = false,
             StemUp = stemUp, VoiceRole = role, OctaveShift = octaveShift, Beams = beams, Lyrics = lyrics, ExtendEnds = extendEnds,
-            Articulations = articulations,
+            Articulations = articulations, Graces = graces, GraceRoomBefore = GraceRoom(graces, after: false),
             Notes = sorted.Select((n, i) => new PreparedNote(n.Position, n.Accidental, sides[i], columns[i], n.Midi, n.Tie)).ToList(),
-            LeftExtent = displacedLeft + accidentalRoom,
-            RightExtent = headWidth + displacedRight + Math.Max(DotsWidth(value), flagRoom),
+            LeftExtent = displacedLeft + accidentalRoom + GraceRoom(graces, after: false),
+            RightExtent = headWidth + displacedRight + Math.Max(DotsWidth(value), flagRoom) + GraceRoom(graces, after: true),
         };
     }
 

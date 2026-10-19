@@ -168,7 +168,9 @@ public sealed class NoteLayoutTests
     public void EveryImportedNoteGetsAHead_AndEveryRestAGlyph(string file)
     {
         var project = MusicXmlImporter.ImportFile(Path.Combine(AppContext.BaseDirectory, "samples", "musicxml", file)).Project;
-        var items = ScoreLayoutEngine.Layout(project).Pages.SelectMany(p => p.Items).OfType<GlyphItem>().ToList();
+        var layout = ScoreLayoutEngine.Layout(project);
+        // Grace notes are drawn smaller and are not events of their own.
+        var items = layout.Pages.SelectMany(p => p.Items).OfType<GlyphItem>().Where(g => g.Size > 3.5 * layout.StaffSpace).ToList();
 
         // Notes and rests on hidden staves are not drawn.
         var shown = project.Parts.SelectMany(p => p.Measures).SelectMany(m => m.Events.Where(e => !m.HiddenStaves.Contains(e.Staff))).ToList();
@@ -727,7 +729,7 @@ public sealed class NoteLayoutTests
         foreach (var page in layout.Pages)
         {
             var glyphs = page.Items.OfType<GlyphItem>().ToList();
-            var heads = glyphs.Where(g => Noteheads.Contains(g.Glyph))
+            var heads = glyphs.Where(g => Noteheads.Contains(g.Glyph) && g.Size > 3.5 * sp) // grace notes are smaller
                 .Select(g => (Glyph: g, Left: g.X, Right: g.X + Smufl.NoteheadWidth(HeadType(g.Glyph)) * sp, Top: g.Y - 0.5 * sp, Bottom: g.Y + 0.5 * sp)).ToList();
             var rests = glyphs.Where(g => g.Glyph >= Smufl.RestDoubleWhole && g.Glyph <= Smufl.RestDoubleWhole + 7)
                 .Select(g =>

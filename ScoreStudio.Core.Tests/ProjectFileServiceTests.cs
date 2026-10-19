@@ -392,6 +392,22 @@ public sealed class ProjectFileServiceTests : IDisposable
     }
 
     [Fact]
+    public void Load_Version18File_HasNoGraceNotes_AndGraceNotesSurviveSaveAndReopen()
+    {
+        Assert.Empty(ProjectFileService.Parse("""{ "SchemaVersion": 18, "Parts": [ { "Measures": [ { "Events": [ {} ] } ] } ] }""").Parts[0].Measures[0].Events[0].GraceNotes);
+
+        var project = ScoreProject.CreateNew();
+        project.Parts[0].Measures[0].Events.Add(new ScoreEvent
+        {
+            GraceNotes = { new ScoreGraceNote { MidiPitch = 74, NotationSpelling = "D5", Type = "16th", Slash = true, Chord = true, After = true } },
+        });
+        var path = PathFor("graces.scoreproj");
+        ProjectFileService.Save(path, project);
+        var grace = ProjectFileService.Load(path).Parts[0].Measures[0].Events[0].GraceNotes.Single();
+        Assert.Equal((74, "D5", "16th", true, true, true), (grace.MidiPitch, grace.NotationSpelling, grace.Type, grace.Slash, grace.Chord, grace.After));
+    }
+
+    [Fact]
     public void Load_Version17File_HasNoTransposition_AndTranspositionSurvivesSaveAndReopen()
     {
         Assert.Null(ProjectFileService.Parse("""{ "SchemaVersion": 17, "Parts": [ {} ] }""").Parts[0].Transpose);
@@ -477,6 +493,8 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Slurs": [ { "Voice": 0 } ] } ] } ] }""", "이음줄" },
         { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Events": [ { "Articulations": [ "Trill" ] } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 18, "Parts": [ { "Transpose": { "Chromatic": 40 } } ] }""", "이조 악기" },
+        { """{ "SchemaVersion": 19, "Parts": [ { "Measures": [ { "Events": [ { "GraceNotes": [ { "Type": "quaver" } ] } ] } ] } ] }""", "꾸밈음" },
+        { """{ "SchemaVersion": 19, "Parts": [ { "Measures": [ { "Events": [ { "GraceNotes": [ { "MidiPitch": 130 } ] } ] } ] } ] }""", "꾸밈음" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Percussion" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };

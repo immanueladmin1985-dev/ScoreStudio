@@ -419,6 +419,15 @@ public static class MusicXmlImporter
 
         private ScoreTranspose? _transpose;
 
+        /// <summary>Grace notes read and waiting for the note of their staff and voice that follows them.</summary>
+        private readonly Dictionary<(int Staff, int Voice), List<ScoreGraceNote>> _pendingGraces = new();
+
+        /// <summary>Staff and voice of the last grace note that was not a chord member.</summary>
+        private (int Staff, int Voice) _graceVoice = (0, 1);
+
+        /// <summary>Numbers of slurs started on grace notes (grace slurs are not kept), so their stops are not warned about.</summary>
+        private readonly HashSet<string> _graceSlurs = new();
+
         public PartReader(string name, string label, string instrument, ImportWarningCollector warnings)
         {
             _name = name;
@@ -547,6 +556,7 @@ public static class MusicXmlImporter
             foreach (var _ in _earlySlurStops)
                 Warn("시작이 없는 이음줄 끝은 무시함");
             _earlySlurStops.Clear();
+            AttachTrailingGraces(measure);
 
             measure.HiddenStaves.AddRange(_hiddenStaves.OrderBy(s => s));
             return measure;
@@ -822,7 +832,7 @@ public static class MusicXmlImporter
         {
             if (note.Element("grace") is not null)
             {
-                Warn("꾸밈음");
+                ReadGrace(note);
                 return;
             }
 
@@ -860,6 +870,7 @@ public static class MusicXmlImporter
                 Voice = isChord && note.Element("voice") is null ? _chordVoice : ReadVoice(note),
             };
             if (!isChord) (_chordStaff, _chordVoice) = (item.Staff, item.Voice);
+            if (!isChord && _pendingGraces.Remove((item.Staff, item.Voice), out var graces)) item.GraceNotes = graces;
             if (note.Element("rest") is not null)
             {
                 item.Kind = "Rest";
@@ -888,6 +899,60 @@ public static class MusicXmlImporter
             ReadTuplets(note, measure, item, start + duration);
             ReadNotations(note, measure, item);
             measure.Events.Add(item);
+        }
+
+        /// <summary>
+        /// A grace note: it takes no time and waits for the next note or rest of its staff and voice, which carries it
+        /// (docs/GRACE_NOTES.md). Grace rests and unpitched grace notes are not kept.
+        /// </summary>
+        private void ReadGrace(XElement note)
+        {
+            var isChord = note.Element("chord") is not null;
+            var (staff, voice) = isChord && note.Element("staff") is null ? _graceVoice : (ReadStaff(note), ReadVoice(note));
+            if (!isChord) _graceVoice = (staff, voice);
+
+            var pitched = new ScoreEvent();
+            if (note.Element("pitch") is not { } pitch || !ReadPitch(pitch, pitched))
+            {
+                Warn("쉼표·타악기 꾸밈음은 가져오지 않음");
+                return;
+            }
+
+            var type = note.Element("type")?.Value.Trim();
+            var grace = new ScoreGraceNote
+            {
+                MidiPitch = pitched.MidiPitch, NotationSpelling = pitched.NotationSpelling,
+                Type = type is not null && ScoreGraceNote.Types.Contains(type) ? type : "eighth",
+                Slash = (string?)note.Element("grace")!.Attribute("slash") == "yes",
+                Chord = isChord && _pendingGraces.ContainsKey((staff, voice)),
+            };
+            if (!_pendingGraces.TryGetValue((staff, voice), out var list)) _pendingGraces[(staff, voice)] = list = new();
+            list.Add(grace);
+
+            foreach (var slur in note.Elements("notations").SelectMany(n => n.Elements("slur")).Where(s => (string?)s.Attribute("type") == "start"))
+                _graceSlurs.Add(((string?)slur.Attribute("number"))?.Trim() is { Length: > 0 } n ? n : "1");
+        }
+
+        /// <summary>Grace notes left at the end of a measure come after the last note of their voice there.</summary>
+        private void AttachTrailingGraces(ScoreMeasure measure)
+        {
+            foreach (var ((staff, voice), graces) in _pendingGraces)
+            {
+                var last = measure.Events.LastOrDefault(e => e.Staff == staff && e.Voice == voice);
+                if (last is null)
+                {
+                    Warn("음표 없이 남은 꾸밈음은 가져오지 않음");
+                    continue;
+                }
+
+                foreach (var grace in graces) grace.After = true;
+                // The carrying note is the first note of its chord.
+                var first = measure.Events.First(e => e.Staff == staff && e.Voice == voice
+                    && e.PositionNumerator * last.PositionDenominator == last.PositionNumerator * e.PositionDenominator);
+                first.GraceNotes.AddRange(graces);
+            }
+
+            _pendingGraces.Clear();
         }
 
         private static bool TrySetFraction(Rational value, Action<int, int> set)
@@ -1208,6 +1273,10 @@ public static class MusicXmlImporter
                     {
                         if (End(open.Slur, open.Index, item.Staff, item.Voice, position)) open.Measure.Slurs.Add(open.Slur);
                         _closedSlur = (_measureIndex, number, position);
+                    }
+                    else if (_graceSlurs.Remove(number))
+                    {
+                        // The end of a slur from a grace note to its note: grace slurs are drawn by convention, not kept.
                     }
                     else if (_closedSlur != (_measureIndex, number, position))
                     {

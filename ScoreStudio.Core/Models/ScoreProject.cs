@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 18;
+    public const int CurrentSchemaVersion = 19;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -515,6 +515,34 @@ public sealed class ScoreEvent
 
     /// <summary>Staccato, accent, fermata and the like on this note, in enum order. In a chord they apply to the whole chord.</summary>
     public List<Articulation> Articulations { get; set; } = new();
+
+    /// <summary>
+    /// Grace notes played before this note or rest (or, marked <see cref="ScoreGraceNote.After"/>, after it), in order.
+    /// They take no time in the measure. In a chord the first note carries them (docs/GRACE_NOTES.md).
+    /// </summary>
+    public List<ScoreGraceNote> GraceNotes { get; set; } = new();
+}
+
+/// <summary>A grace note: a small note without time of its own, before (or after) the note that carries it.</summary>
+public sealed class ScoreGraceNote
+{
+    public int MidiPitch { get; set; } = 72;
+    public string? NotationSpelling { get; set; }
+
+    /// <summary>The written value in MusicXML terms: "eighth" (the usual), "16th", "32nd", "quarter" or "half".</summary>
+    public string Type { get; set; } = "eighth";
+
+    /// <summary>A slash through the stem (acciaccatura).</summary>
+    public bool Slash { get; set; }
+
+    /// <summary>Sounds together with the grace note before it (a grace chord).</summary>
+    public bool Chord { get; set; }
+
+    /// <summary>Comes after the carrying note instead of before it (Finale's grace notes at the end of a measure).</summary>
+    public bool After { get; set; }
+
+    /// <summary>Grace note values a file may hold.</summary>
+    public static readonly IReadOnlyList<string> Types = new[] { "half", "quarter", "eighth", "16th", "32nd", "64th" };
 }
 
 public sealed class ScoreLyric

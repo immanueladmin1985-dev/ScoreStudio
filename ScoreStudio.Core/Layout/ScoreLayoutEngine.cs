@@ -911,6 +911,7 @@ public static partial class ScoreLayoutEngine
                     ? (contentLeft + measureRight - Smufl.RestWidth(NoteType.Whole) * sp) / 2
                     : onsetX[chord.Start];
                 var (restTop, restBottom) = DrawRest(items, chord, restX, staffTop, sp);
+                DrawGraces(items, chord, restX, (chord.LeftExtent - chord.GraceRoomBefore) * sp, restX + Smufl.RestWidth(chord.IsMeasureRest ? NoteType.Whole : chord.Value.Type) * sp, staffTop, sp);
                 rests.Add(new PlacedRest(slotIndex, measureIndex, chord.Start, chord.Voice, chord, restX, restTop, restBottom));
                 var restType = chord.IsMeasureRest ? NoteType.Whole : chord.Value.Type;
                 boxes.Add(new ChordBox(chord.PartIndex, chord.Staff, chord.Voice, measureIndex, chord.Start, true,
@@ -920,6 +921,9 @@ public static partial class ScoreLayoutEngine
             {
                 var chordX = onsetX[chord.Start] + chord.XOffset * sp;
                 var (top, bottom) = DrawChord(items, chord, chordX, staffTop, sp);
+                DrawGraces(items, chord, chordX, (chord.LeftExtent - chord.GraceRoomBefore) * sp,
+                    chordX + (Smufl.NoteheadWidth(chord.Value.Type) * (chord.Notes.Any(n => n.Side > 0) ? 2 : 1) + (chord.Value.Dots > 0 ? 0.35 + chord.Value.Dots * 0.6 : 0)) * sp,
+                    staffTop, sp);
                 placed.Add(new PlacedChord(slotIndex, measureIndex, chord, chordX, top, bottom));
                 var head = Smufl.NoteheadWidth(chord.Value.Type) * sp;
                 boxes.Add(new ChordBox(chord.PartIndex, chord.Staff, chord.Voice, measureIndex, chord.Start, false,

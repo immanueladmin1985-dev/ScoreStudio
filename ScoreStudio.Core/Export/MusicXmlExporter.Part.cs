@@ -638,8 +638,11 @@ public static partial class MusicXmlExporter
                 MoveTo(chord.Position, voice, staff);
                 var onlyRest = chords.Count == 1 && chord.Notes[0].Kind == "Rest" && chord.Position.Sign == 0
                     && Length(chord.Notes[0]) == Length(context.Measure);
+                var graces = chord.Notes[0].GraceNotes;
+                WriteGraces(graces.Where(g => !g.After).ToList(), chord.Notes[0], context.Measure.KeyFifths);
                 for (var i = 0; i < chord.Notes.Count; i++)
                     _measure.Add(Note(context, chord.Notes[i], isChordMember: i > 0, isMeasureRest: onlyRest));
+                WriteGraces(graces.Where(g => g.After).ToList(), chord.Notes[0], context.Measure.KeyFifths);
                 _cursor += Length(chord.Notes[0]);
             }
         }
@@ -753,6 +756,44 @@ public static partial class MusicXmlExporter
                 note.Add(new XElement("lyric", new XAttribute("number", verse), new XElement("extend", new XAttribute("type", "stop"))));
 
             return note;
+        }
+
+        /// <summary>
+        /// Grace notes of a note (docs/GRACE_NOTES.md), stems up. Two or more short grace chords in a row are beamed with
+        /// as many beams as the shortest of them needs.
+        /// </summary>
+        private void WriteGraces(List<ScoreGraceNote> graces, ScoreEvent principal, int keyFifths)
+        {
+            if (graces.Count == 0) return;
+            static int Levels(string type) => type switch { "eighth" => 1, "16th" => 2, "32nd" => 3, "64th" => 4, _ => 0 };
+            var chordStarts = graces.Select((g, i) => (g, i)).Where(x => !x.g.Chord || x.i == 0).Select(x => x.i).ToList();
+            var levels = chordStarts.Count >= 2 ? graces.Min(g => Levels(g.Type)) : 0;
+
+            for (var i = 0; i < graces.Count; i++)
+            {
+                var grace = graces[i];
+                var note = new XElement("note");
+                var mark = new XElement("grace");
+                if (grace.Slash) mark.Add(new XAttribute("slash", "yes"));
+                note.Add(mark);
+                if (grace.Chord && i > 0) note.Add(new XElement("chord"));
+
+                var pitch = Notation.Spell(new ScoreEvent { MidiPitch = grace.MidiPitch, NotationSpelling = grace.NotationSpelling }, keyFifths);
+                var pitchElement = new XElement("pitch", new XElement("step", "CDEFGAB"[pitch.Step].ToString()));
+                if (pitch.Alter != 0) pitchElement.Add(new XElement("alter", pitch.Alter));
+                pitchElement.Add(new XElement("octave", pitch.Octave));
+                note.Add(pitchElement, new XElement("voice", principal.Voice), new XElement("type", grace.Type), new XElement("stem", "up"));
+                if (_staves > 1) note.Add(new XElement("staff", principal.Staff + 1));
+
+                var column = chordStarts.FindLastIndex(start => start <= i);
+                if (levels > 0 && chordStarts[column] == i)
+                {
+                    var state = column == 0 ? "begin" : column == chordStarts.Count - 1 ? "end" : "continue";
+                    for (var level = 1; level <= levels; level++) note.Add(new XElement("beam", new XAttribute("number", level), state));
+                }
+
+                _measure.Add(note);
+            }
         }
 
         /// <summary>A syllable; syllables joined by ‿ (an elision) are separate &lt;text&gt; elements.</summary>
