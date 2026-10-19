@@ -491,7 +491,7 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Hairpins": [ { "EndPositionDenominator": 0 } ] } ] } ] }""", "크레셴도" },
         { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Slurs": [ { "EndStaff": 1 } ] } ] } ] }""", "이음줄" },
         { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Slurs": [ { "Voice": 0 } ] } ] } ] }""", "이음줄" },
-        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Events": [ { "Articulations": [ "Trill" ] } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 17, "Parts": [ { "Measures": [ { "Events": [ { "Articulations": [ "Glissando" ] } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 18, "Parts": [ { "Transpose": { "Chromatic": 40 } } ] }""", "이조 악기" },
         { """{ "SchemaVersion": 19, "Parts": [ { "Measures": [ { "Events": [ { "GraceNotes": [ { "Type": "quaver" } ] } ] } ] } ] }""", "꾸밈음" },
         { """{ "SchemaVersion": 19, "Parts": [ { "Measures": [ { "Events": [ { "GraceNotes": [ { "MidiPitch": 130 } ] } ] } ] } ] }""", "꾸밈음" },

@@ -42,4 +42,5 @@
 - [ ] 이조 악기(클라리넷 등)가 있는 악보는 MusicXML로 내보내 Finale에서 열었을 때 소리 높이가 맞는가?
 - [ ] 결과 창의 경고 목록(꾸밈음, 트릴 등 남은 것)을 알려 준다. 다음 작업 순서를 정하는 데 쓴다.
 - [ ] 꾸밈음: `samples\musx\grace_notes.musx`, `samples\musicxml\grace-notes.musicxml`, `v1v2tuplets.musx`를 열어 꾸밈음이 작은 음표로 주음 앞에 보이는가? 빗금·빔이 Finale와 비슷한가?
+- [ ] 장식음·트레몰로: `samples\musicxml\ornaments.musicxml`을 열어 트릴·턴·모르덴트, 트레몰로 빗금과 두 음 트레몰로 줄, 울림 붙임줄이 Finale와 비슷한가?
 - 원본 .musx 파일은 바뀌지 않는다. 문제가 있는 파일은 저작권이 있을 수 있으므로 저장소에 올리지 않고 결과만 기록한다.

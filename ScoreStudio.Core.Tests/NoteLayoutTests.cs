@@ -954,7 +954,8 @@ public sealed class NoteLayoutTests
         var name = Path.GetFileName(file);
         foreach (var page in layout.Pages)
         {
-            var beams = page.Items.OfType<BeamItem>().ToList();
+            // Tremolo strokes (0.45 spaces thick, docs/ORNAMENTS.md) cross stems but are not beams.
+            var beams = page.Items.OfType<BeamItem>().Where(b => Math.Abs(b.Thickness - 0.45 * sp) > 1e-9).ToList();
             var flags = page.Items.OfType<GlyphItem>().Where(g => Flags.Contains(g.Glyph)).ToList();
 
             // Stems are vertical lines as thick as a stem and at least two spaces long (octave-line hooks are one space).

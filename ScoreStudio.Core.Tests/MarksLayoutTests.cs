@@ -176,4 +176,23 @@ public sealed class MarksLayoutTests
         Assert.Equal(2, page.Items.OfType<BeamItem>().Count()); // two beams for the 16th grace notes
         Assert.Single(page.Items.OfType<LineItem>(), l => l.X1 < l.X2 && l.Y1 > l.Y2 && l.Y1 < graceHeads[0].Y); // the slash
     }
+
+    [Fact]
+    public void Ornaments_GoAboveTheStaff_TremolosGetStrokes_AndLetRingGetsAShortTie()
+    {
+        var project = Score(2,
+            new ScoreEvent { MidiPitch = 72, NotationSpelling = "C5", DurationNumerator = 1, TremoloToNext = 3 },
+            new ScoreEvent { MidiPitch = 76, NotationSpelling = "E5", PositionNumerator = 1, DurationNumerator = 1 },
+            new ScoreEvent { MidiPitch = 67, NotationSpelling = "G4", PositionNumerator = 2, DurationNumerator = 1, Tremolo = 2, Articulations = { Articulation.Trill } },
+            new ScoreEvent { MidiPitch = 69, NotationSpelling = "A4", PositionNumerator = 3, DurationNumerator = 1, LetRing = true });
+        var (page, top) = Layout(project);
+
+        Assert.True(Glyph(page, Smufl.Articulation(Articulation.Trill, true).Glyph).Y <= top - 0.5 * Sp + 1e-9, "the trill is above the staff");
+        // The tremolo's quarters are written as halves.
+        Assert.Equal(2, page.Items.OfType<GlyphItem>().Count(g => g.Glyph == Smufl.NoteheadHalf));
+        // Three bars between the tremolo's notes and two strokes through the G4's stem.
+        Assert.Equal(5, page.Items.OfType<BeamItem>().Count());
+        var tie = Assert.Single(page.Items.OfType<CurveItem>());
+        Assert.InRange(tie.X2 - tie.X1, 2 * Sp, 2.5 * Sp);
+    }
 }

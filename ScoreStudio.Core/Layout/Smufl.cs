@@ -222,6 +222,11 @@ public static class Smufl
         Models.Articulation.Accent => (above ? '\uE4A0' : '\uE4A1', 1.356, 0.98),
         Models.Articulation.Marcato => (above ? '\uE4AC' : '\uE4AD', 0.944, 1.016),
         Models.Articulation.Tenuto => (above ? '\uE4A4' : '\uE4A5', 1.352, 0.192),
+        Models.Articulation.Trill => ('\uE566', 2.084, 1.56),
+        Models.Articulation.Turn => ('\uE567', 1.84, 0.872),
+        Models.Articulation.InvertedTurn => ('\uE568', 1.828, 0.872),
+        Models.Articulation.Mordent => ('\uE56D', 2.916, 1.276),
+        Models.Articulation.InvertedMordent => ('\uE56C', 2.92, 0.98),
         _ => (above ? '\uE4C0' : '\uE4C1', 2.42, 1.33),
     };
 

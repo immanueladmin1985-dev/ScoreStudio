@@ -125,6 +125,21 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void Ornaments_Tremolos_AndLetRingTies_AreKept()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("ornaments.musicxml"));
+        Assert.Empty(result.Warnings);
+        var measures = result.Project.Parts[0].Measures;
+
+        // A two-note tremolo keeps its notes' real lengths (a quarter each, written as halves).
+        Assert.Equal(new[] { (3, 0, 1), (0, 0, 1), (0, 0, 2) }, measures[0].Events.Select(e => (e.TremoloToNext, e.Tremolo, e.DurationNumerator)));
+        Assert.Equal(new[] { Articulation.Trill }, measures[0].Events[2].Articulations);
+        Assert.Equal(3, measures[1].Events[0].Tremolo);
+        Assert.Equal(new[] { "", "Turn", "InvertedMordent", "InvertedTurn,Mordent" }, measures[1].Events.Select(e => string.Join(",", e.Articulations)));
+        Assert.Equal(new[] { true, false }, measures[2].Events.Select(e => e.LetRing));
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -202,7 +217,7 @@ public sealed class MusicXmlImporterTests : IDisposable
             new Dictionary<string, int>
             {
                 ["페달"] = 1,
-                ["장식음 기호(트릴, 턴 등)"] = 1,
+                ["장식음 기호 <schleifer>"] = 1,
                 ["기타 아티큘레이션(숨표, 중간 휴지 등)"] = 1,
             },
             warnings);
@@ -220,7 +235,7 @@ public sealed class MusicXmlImporterTests : IDisposable
         var slur = Assert.Single(part.Measures[0].Slurs);
         Assert.Equal((0, 0, 3), (slur.PositionNumerator, slur.EndMeasureOffset, slur.EndPositionNumerator));
         Assert.Equal(new[] { Articulation.Staccato }, part.Measures[0].Events[1].Articulations);
-        Assert.Equal(new[] { Articulation.Fermata }, part.Measures[0].Events[2].Articulations);
+        Assert.Equal(new[] { Articulation.Fermata, Articulation.Trill }, part.Measures[0].Events[2].Articulations);
 
         // Imported since schema version 4: ties, later verses, hyphens, chord symbols, repeats.
         var first = part.Measures[0].Events[0];

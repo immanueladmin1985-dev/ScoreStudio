@@ -32,6 +32,11 @@ public sealed partial class ScoreEditor
         Articulation.Accent => "악센트",
         Articulation.Marcato => "마르카토(강한 악센트)",
         Articulation.Tenuto => "테누토",
+        Articulation.Trill => "트릴",
+        Articulation.Turn => "턴",
+        Articulation.InvertedTurn => "거꾸로 된 턴",
+        Articulation.Mordent => "모르덴트(아래)",
+        Articulation.InvertedMordent => "모르덴트(위, 짧은 트릴)",
         _ => "페르마타",
     };
 

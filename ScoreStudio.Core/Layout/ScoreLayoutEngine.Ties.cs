@@ -44,13 +44,19 @@ public static partial class ScoreLayoutEngine
             for (var i = 0; i < notes.Count; i++)
             {
                 var note = notes[i];
-                if (!note.TieToNext) continue;
+                if (!note.TieToNext && !chord.LetRing) continue;
 
                 var above = TieAbove(chord, i);
                 var single = notes.Count == 1;
                 var offset = (above ? -1 : 1) * (single ? 0.6 : 0.25) * sp;
                 var startX = from.X + note.Side * head + (single ? 0.6 * head : head + 0.15 * sp);
                 var startY = StaffY(staffTops[from.Slot], note.Position, sp) + offset;
+                if (!note.TieToNext)
+                {
+                    // A "let ring" tie: short, to nothing.
+                    AddTie(items, startX, startY, startX + 2.2 * sp, startY, above, sp);
+                    continue;
+                }
 
                 var target = TieTarget(ordered, from.Slot, from, chord.Voice, note.Midi);
                 if (target is null)

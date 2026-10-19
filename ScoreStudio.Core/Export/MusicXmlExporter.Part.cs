@@ -18,14 +18,25 @@ public static partial class MusicXmlExporter
     };
 
     /// <summary>MusicXML elements for each articulation; a fermata is a notation of its own.</summary>
-    private static string ArticulationElement(Articulation articulation) => articulation switch
+    private static string? ArticulationElement(Articulation articulation) => articulation switch
     {
         Articulation.Staccato => "staccato",
         Articulation.Staccatissimo => "staccatissimo",
         Articulation.Accent => "accent",
         Articulation.Marcato => "strong-accent",
         Articulation.Tenuto => "tenuto",
-        _ => "fermata",
+        _ => null,
+    };
+
+    /// <summary>MusicXML's &lt;ornaments&gt; children for the ornament marks (docs/ORNAMENTS.md).</summary>
+    private static string? OrnamentElement(Articulation articulation) => articulation switch
+    {
+        Articulation.Trill => "trill-mark",
+        Articulation.Turn => "turn",
+        Articulation.InvertedTurn => "inverted-turn",
+        Articulation.Mordent => "mordent",
+        Articulation.InvertedMordent => "inverted-mordent",
+        _ => null,
     };
 
     /// <summary>
@@ -68,6 +79,9 @@ public static partial class MusicXmlExporter
         /// <summary>Octave-line starts (shift ≠ 0) and stops (shift 0, with the size that stops) by measure index.</summary>
         private readonly Dictionary<int, List<(int Staff, Rational Position, int Shift, int Size)>> _octaveLines = new();
 
+        /// <summary>The second chord of each two-note tremolo (its first note), with the tremolo's strokes.</summary>
+        private readonly Dictionary<ScoreEvent, int> _tremoloStops = new(ReferenceEqualityComparer.Instance);
+
         /// <summary>Slur starts and stops on the first note of chords.</summary>
         private readonly Dictionary<ScoreEvent, List<XElement>> _slurMarks = new(ReferenceEqualityComparer.Instance);
 
@@ -92,6 +106,13 @@ public static partial class MusicXmlExporter
             FindOctaveLines();
             FindSlurs();
             FindHairpins();
+            foreach (var measure in part.Measures)
+            {
+                foreach (var e in measure.Events.Where(e => e.TremoloToNext > 0))
+                {
+                    if (ChordAt(measure, e.Staff, e.Voice, Start(e) + Length(e)) is { } next) _tremoloStops[next] = e.TremoloToNext;
+                }
+            }
             for (var m = 0; m < part.Measures.Count; m++)
             {
                 if (part.Measures[m].Volta is { } volta)
@@ -697,7 +718,10 @@ public static partial class MusicXmlExporter
             XElement? timeModification = null;
             if (!isMeasureRest)
             {
-                var value = Notation.ValueOf(duration, NotePreparation.TupletRatio(context.Measure, e));
+                // The notes of a two-note tremolo are written at twice their length.
+                var value = e.TremoloToNext > 0 || _tremoloStops.ContainsKey(e)
+                    ? Notation.ValueOf(duration * new Rational(2, 1))
+                    : Notation.ValueOf(duration, NotePreparation.TupletRatio(context.Measure, e));
                 if (!value.IsExact) Warn("음표 종류로 정확히 나타낼 수 없는 길이 (길이는 그대로 쓰고 가장 가까운 짧은 음표로 표시)");
                 note.Add(new XElement("type", TypeNames[(int)value.Type]));
                 for (var d = 0; d < value.Dots; d++) note.Add(new XElement("dot"));
@@ -735,19 +759,26 @@ public static partial class MusicXmlExporter
             var notations = new XElement("notations");
             if (tieStop) notations.Add(new XElement("tied", new XAttribute("type", "stop")));
             if (tieStart) notations.Add(new XElement("tied", new XAttribute("type", "start")));
+            if (!isRest && e.LetRing) notations.Add(new XElement("tied", new XAttribute("type", "let-ring")));
             if (!isChordMember && _slurMarks.TryGetValue(e, out var slurs)) notations.Add(slurs);
             if (!isChordMember && context.TupletMarks.TryGetValue(e, out var marks)) notations.Add(marks);
 
             // Tenuto with staccato is MusicXML's detached-legato (Finale's "tenuto-staccato").
             var detached = e.Articulations.Contains(Articulation.Tenuto) && e.Articulations.Contains(Articulation.Staccato);
             var articulations = e.Articulations.Distinct()
-                .Where(a => a != Articulation.Fermata && !(detached && a is Articulation.Tenuto or Articulation.Staccato))
-                .Select(a => new XElement(ArticulationElement(a)))
+                .Where(a => ArticulationElement(a) is not null && !(detached && a is Articulation.Tenuto or Articulation.Staccato))
+                .Select(a => new XElement(ArticulationElement(a)!))
                 .ToList();
             if (detached) articulations.Insert(0, new XElement("detached-legato"));
             if (articulations.Count > 0) notations.Add(new XElement("articulations", articulations));
 
             if (e.Articulations.Contains(Articulation.Fermata)) notations.Add(new XElement("fermata", new XAttribute("type", "upright")));
+
+            var ornaments = new XElement("ornaments", e.Articulations.Distinct().Select(OrnamentElement).OfType<string>().Select(n => new XElement(n)));
+            if (e.Tremolo > 0) ornaments.Add(new XElement("tremolo", new XAttribute("type", "single"), e.Tremolo));
+            if (!isChordMember && e.TremoloToNext > 0) ornaments.Add(new XElement("tremolo", new XAttribute("type", "start"), e.TremoloToNext));
+            if (!isChordMember && _tremoloStops.TryGetValue(e, out var strokes)) ornaments.Add(new XElement("tremolo", new XAttribute("type", "stop"), strokes));
+            if (ornaments.HasElements) notations.Add(ornaments);
             if (notations.HasElements) note.Add(notations);
 
             foreach (var lyric in e.Lyrics.OrderBy(l => l.Verse))

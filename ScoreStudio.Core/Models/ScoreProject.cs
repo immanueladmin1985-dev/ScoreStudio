@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 19;
+    public const int CurrentSchemaVersion = 20;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -363,6 +363,17 @@ public enum Articulation
 
     Tenuto,
     Fermata,
+
+    // Ornaments (docs/ORNAMENTS.md), above the staff like a fermata.
+    Trill,
+    Turn,
+    InvertedTurn,
+
+    /// <summary>Lower mordent (with a vertical stroke), MusicXML's "mordent".</summary>
+    Mordent,
+
+    /// <summary>Upper mordent (short trill, no stroke), MusicXML's "inverted-mordent".</summary>
+    InvertedMordent,
 }
 
 public sealed class ScoreClefChange
@@ -521,6 +532,18 @@ public sealed class ScoreEvent
     /// They take no time in the measure. In a chord the first note carries them (docs/GRACE_NOTES.md).
     /// </summary>
     public List<ScoreGraceNote> GraceNotes { get; set; } = new();
+
+    /// <summary>A "let ring" tie: a short tie to nothing, the note is left to sound (docs/ORNAMENTS.md).</summary>
+    public bool LetRing { get; set; }
+
+    /// <summary>Strokes of a single-note tremolo through the stem (1–4); 0 for none.</summary>
+    public int Tremolo { get; set; }
+
+    /// <summary>
+    /// Strokes of a two-note tremolo from this chord to the next chord of its voice (1–4); 0 for none. Both chords keep
+    /// their real lengths and are written at twice that value, as usual for such tremolos.
+    /// </summary>
+    public int TremoloToNext { get; set; }
 }
 
 /// <summary>A grace note: a small note without time of its own, before (or after) the note that carries it.</summary>

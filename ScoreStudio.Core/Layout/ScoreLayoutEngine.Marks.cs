@@ -48,13 +48,81 @@ public static partial class ScoreLayoutEngine
 
         foreach (var rest in rests.Where(r => r.Chord is { Articulations.Count: > 0 }))
             DrawChordArticulations(items, rest.Chord!, rest.X, rest.Top, rest.Bottom, staffTops[rest.Slot], sp);
+
+        DrawTremolos(items, placed, staffTops, sp);
+    }
+
+    private const double TremoloStrokeThickness = 0.45;
+    private const double TremoloStrokeSpacing = 0.75;
+
+    /// <summary>
+    /// The stem of a drawn chord as <see cref="DrawChord"/> draws an unbeamed one: its x, the y where it meets the heads and
+    /// the y of its tip. A chord without a stem (whole note) gives its head's middle and a tip two spaces above it.
+    /// </summary>
+    private static (double X, double Near, double Tip) StemOf(PlacedChord placed, double staffTop, double sp)
+    {
+        var chord = placed.Chord;
+        var headWidth = Smufl.NoteheadWidth(chord.Value.Type) * sp;
+        var thickness = Smufl.StemThickness * sp;
+        var low = StaffY(staffTop, chord.Notes.Min(n => n.Position), sp);
+        var high = StaffY(staffTop, chord.Notes.Max(n => n.Position), sp);
+        var middle = staffTop + 2 * sp;
+        if (chord.Value.Type <= NoteType.Whole) return (placed.X + headWidth / 2, high - 0.5 * sp, high - 2.5 * sp);
+        return chord.StemUp
+            ? (placed.X + headWidth - thickness / 2, low, Math.Min(high - 3.5 * sp, middle))
+            : (placed.X + thickness / 2, high, Math.Max(low + 3.5 * sp, middle));
+    }
+
+    /// <summary>
+    /// Tremolo strokes (docs/ORNAMENTS.md): slanted strokes across the stem of a single-note tremolo, between its head and
+    /// tip; bars between a two-note tremolo's chords, from the heads of one to the heads of the other, halfway along the
+    /// first chord's stem and following the heads.
+    /// </summary>
+    private static void DrawTremolos(List<DrawItem> items, List<PlacedChord> placed, double[] staffTops, double sp)
+    {
+        foreach (var chord in placed.Where(p => p.Chord.Tremolo > 0))
+        {
+            var (x, near, tip) = StemOf(chord, staffTops[chord.Slot], sp);
+            var center = (near + tip) / 2;
+            var strokes = chord.Chord.Tremolo;
+            for (var i = 0; i < strokes; i++)
+            {
+                var y = center + (i - (strokes - 1) / 2.0) * TremoloStrokeSpacing * sp;
+                items.Add(new BeamItem(x - 0.6 * sp, y + 0.2 * sp, x + 0.6 * sp, y - 0.2 * sp, TremoloStrokeThickness * sp));
+            }
+        }
+
+        foreach (var first in placed.Where(p => p.Chord.TremoloToNext > 0))
+        {
+            var second = placed.Where(p => p.Slot == first.Slot && p.Chord.Voice == first.Chord.Voice && IsAfter(p, first))
+                .OrderBy(p => p.Measure).ThenBy(p => p.Chord.Start).FirstOrDefault();
+            if (second is null) continue;
+            // Halfway along the first chord's stem, and the same distance from the second chord's heads, so the bars
+            // follow the notes even when the two stems point different ways.
+            var (_, near1, tip1) = StemOf(first, staffTops[first.Slot], sp);
+            var (_, near2, _) = StemOf(second, staffTops[second.Slot], sp);
+            var lift = (tip1 - near1) / 2;
+            var (y1, y2) = (near1 + lift, near2 + lift);
+
+            // From just right of the first chord's heads to just left of the second's, clear of both.
+            var x1 = first.X + Smufl.NoteheadWidth(first.Chord.Value.Type) * sp * (first.Chord.Notes.Any(n => n.Side > 0) ? 2 : 1) + 0.3 * sp;
+            var x2 = second.X + (second.Chord.Notes.Any(n => n.Side < 0) ? -Smufl.NoteheadWidth(second.Chord.Value.Type) * sp : 0) - 0.3 * sp;
+            if (x2 <= x1) continue;
+            var strokes = first.Chord.TremoloToNext;
+            for (var i = 0; i < strokes; i++)
+            {
+                var offset = (i - (strokes - 1) / 2.0) * TremoloStrokeSpacing * sp;
+                items.Add(new BeamItem(x1, y1 + offset, x2, y2 + offset, TremoloStrokeThickness * sp));
+            }
+        }
     }
 
     /// <summary>
     /// Articulations go on the notehead side, away from the stem; with two voices, above the upper voice and below the
     /// lower one, past its stem. Nearest the note come staccato, staccatissimo and tenuto, which sit in a space when they
-    /// fall inside the staff; then accent and marcato, outside the staff. A fermata goes above the staff (below it for a
-    /// lower voice). Returns how far the chord now reaches up and down, without the fermata.
+    /// fall inside the staff; then accent and marcato, outside the staff. Ornaments (trill, mordents, turns) and then a
+    /// fermata go above the staff (below it for a lower voice). Returns how far the chord now reaches up and down, without
+    /// the ornaments and fermata.
     /// </summary>
     private static (double Top, double Bottom) DrawChordArticulations(
         List<DrawItem> items, PreparedChord chord, double x, double chordTop, double chordBottom, double staffTop, double sp)
@@ -105,11 +173,24 @@ public static partial class ScoreLayoutEngine
             bottom = Math.Max(bottom, glyphTop + h);
         }
 
+        // Ornaments, then a fermata, outside the staff: above it (below it for a lower voice). They sit on their baseline,
+        // so below the staff their top meets the edge.
+        var outsideAbove = chord.VoiceRole >= 0;
+        var outside = outsideAbove ? Math.Min(staffTop, top) - 0.5 * sp : Math.Max(staffBottom, bottom) + 0.5 * sp;
+        var ornaments = new[] { Articulation.Trill, Articulation.Mordent, Articulation.InvertedMordent, Articulation.Turn, Articulation.InvertedTurn };
+        foreach (var ornament in ornaments.Where(chord.Articulations.Contains))
+        {
+            var (glyph, glyphWidth, height) = Smufl.Articulation(ornament, true);
+            var baseline = outsideAbove ? outside : outside + height * sp;
+            items.Add(new GlyphItem(glyph, center - glyphWidth * sp / 2, baseline, 4 * sp));
+            outside = outsideAbove ? baseline - height * sp - 0.3 * sp : baseline + 0.3 * sp;
+        }
+
         if (chord.Articulations.Contains(Articulation.Fermata))
         {
-            var fermataAbove = chord.VoiceRole >= 0;
+            var fermataAbove = outsideAbove;
             var (glyph, glyphWidth, height) = Smufl.Articulation(Articulation.Fermata, fermataAbove);
-            var baseline = fermataAbove ? Math.Min(staffTop, top) - 0.5 * sp : Math.Max(staffBottom, bottom) + 0.5 * sp;
+            var baseline = outside;
             // Slurs end inside the fermata, so it does not count towards the chord's extent.
             items.Add(new GlyphItem(glyph, center - glyphWidth * sp / 2, baseline, 4 * sp));
         }

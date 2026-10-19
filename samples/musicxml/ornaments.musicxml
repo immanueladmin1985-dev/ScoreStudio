@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- ScoreStudio sample: ornaments, tremolos and let-ring ties as Finale writes them (docs/ORNAMENTS.md). -->
+<score-partwise version="4.0">
+  <work><work-title>장식음과 트레몰로</work-title></work>
+  <part-list><score-part id="P1"><part-name>바이올린</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>half</type>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <notations><ornaments><tremolo type="start">3</tremolo></ornaments></notations></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>half</type>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <notations><ornaments><tremolo type="stop">3</tremolo></ornaments></notations></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type>
+        <notations><ornaments><trill-mark placement="above"/></ornaments></notations></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><tremolo type="single">3</tremolo></ornaments></notations></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><turn/></ornaments></notations></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><inverted-mordent/></ornaments></notations></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><mordent/><inverted-turn/></ornaments></notations></note>
+    </measure>
+    <measure number="3">
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type>
+        <notations><tied type="let-ring" orientation="under"/></notations></note>
+      <note><rest/><duration>2</duration><voice>1</voice><type>half</type></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

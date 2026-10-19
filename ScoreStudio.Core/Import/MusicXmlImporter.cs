@@ -347,7 +347,6 @@ public static class MusicXmlImporter
     {
         private static readonly Dictionary<string, string> NotationNames = new()
         {
-            ["ornaments"] = "장식음 기호(트릴, 턴 등)",
             ["technical"] = "주법 기호",
             ["arpeggiate"] = "아르페지오",
             ["non-arpeggiate"] = "아르페지오",
@@ -893,7 +892,7 @@ public static class MusicXmlImporter
             }
 
             item.Lyrics = ReadLyrics(note, item.ExtendEnds);
-            item.TieToNext = item.Kind == "Note" && ReadTie(note);
+            item.TieToNext = item.Kind == "Note" && ReadTie(note, item);
             item.Beams = ReadBeams(note);
             item.StemUp = (string?)note.Element("stem") switch { "up" => true, "down" => false, _ => null };
             ReadTuplets(note, measure, item, start + duration);
@@ -1092,13 +1091,13 @@ public static class MusicXmlImporter
             return beams.Values.ToList();
         }
 
-        private bool ReadTie(XElement note)
+        /// <summary>Whether a tie starts at the note; a "let ring" tie (to nothing) is kept on the note.</summary>
+        private static bool ReadTie(XElement note, ScoreEvent item)
         {
             var types = note.Elements("tie").Select(t => (string?)t.Attribute("type"))
                 .Concat(note.Elements("notations").SelectMany(n => n.Elements("tied")).Select(t => (string?)t.Attribute("type")))
                 .ToList();
-            if (types.Contains("let-ring"))
-                Warn("울림 붙임줄(let ring)");
+            item.LetRing = item.Kind == "Note" && types.Contains("let-ring");
             return types.Contains("start");
         }
 
@@ -1216,6 +1215,8 @@ public static class MusicXmlImporter
             }
 
             if (notations.Any(n => n.Name == "fermata")) articulations.Add(Articulation.Fermata);
+            foreach (var ornament in notations.Where(n => n.Name == "ornaments").SelectMany(n => n.Elements()))
+                ReadOrnament(ornament, item, articulations);
             item.Articulations = articulations.ToList();
 
             var position = new Rational(item.PositionNumerator, item.PositionDenominator);
@@ -1225,9 +1226,56 @@ public static class MusicXmlImporter
             foreach (var dynamics in notations.Where(n => n.Name == "dynamics"))
                 AddDynamic(dynamics, measure, item.Staff, position, Placement(dynamics));
 
-            foreach (var name in notations.Where(n => n.Name.LocalName is not ("tied" or "tuplet" or "articulations" or "fermata" or "slur" or "dynamics"))
+            foreach (var name in notations.Where(n => n.Name.LocalName is not ("tied" or "tuplet" or "articulations" or "fermata" or "slur" or "dynamics" or "ornaments"))
                          .Where(IsStartOrSingle).Select(n => n.Name.LocalName).Distinct())
                 Warn(NotationNames.TryGetValue(name, out var label) ? label : $"기호 <{name}>");
+        }
+
+        private static readonly Dictionary<string, Articulation> OrnamentNames = new()
+        {
+            ["trill-mark"] = Articulation.Trill,
+            ["turn"] = Articulation.Turn,
+            ["inverted-turn"] = Articulation.InvertedTurn,
+            ["mordent"] = Articulation.Mordent,
+            ["inverted-mordent"] = Articulation.InvertedMordent,
+        };
+
+        /// <summary>
+        /// An ornament (docs/ORNAMENTS.md): trills, turns and mordents join the note's marks; a tremolo sets its strokes
+        /// (a two-note tremolo on its first note). Other ornaments are warned about.
+        /// </summary>
+        private void ReadOrnament(XElement ornament, ScoreEvent item, SortedSet<Articulation> articulations)
+        {
+            if (OrnamentNames.TryGetValue(ornament.Name.LocalName, out var mark))
+            {
+                articulations.Add(mark);
+                return;
+            }
+
+            switch (ornament.Name.LocalName)
+            {
+                case "tremolo":
+                {
+                    var type = (string?)ornament.Attribute("type") ?? "single";
+                    var strokes = int.TryParse(ornament.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 3;
+                    if (type == "unmeasured" || strokes is < 1 or > 4)
+                        Warn("측정하지 않는 트레몰로(버즈 롤 등)는 가져오지 않음");
+                    else if (type == "single")
+                        item.Tremolo = strokes;
+                    else if (type == "start")
+                        item.TremoloToNext = strokes;
+                    break;
+                }
+                case "wavy-line":
+                    if (IsStartOrSingle(ornament)) Warn("트릴 연장선(물결선)");
+                    break;
+                case "accidental-mark":
+                    Warn("임시표 기호");
+                    break;
+                default:
+                    Warn($"장식음 기호 <{ornament.Name.LocalName}>");
+                    break;
+            }
         }
 
         private static bool? Placement(XElement element) =>

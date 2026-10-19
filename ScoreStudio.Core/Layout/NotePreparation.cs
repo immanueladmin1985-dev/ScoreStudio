@@ -65,6 +65,15 @@ internal sealed class PreparedChord
     /// <summary>The part of <see cref="LeftExtent"/> taken by the grace notes before the chord, in staff spaces.</summary>
     public double GraceRoomBefore { get; init; }
 
+    /// <summary>A "let ring" tie leaves every note of the chord.</summary>
+    public bool LetRing { get; set; }
+
+    /// <summary>Single-note tremolo strokes through the stem; 0 for none.</summary>
+    public int Tremolo { get; set; }
+
+    /// <summary>Two-note tremolo strokes to the next chord of the voice; 0 for none.</summary>
+    public int TremoloToNext { get; set; }
+
     /// <summary>
     /// Shift to the right of the onset, in staff spaces: one of two voices moves aside when their notes would touch (a
     /// second, or a unison that cannot share a notehead).
@@ -81,7 +90,7 @@ internal sealed class PreparedChord
     public double LeftExtent { get; init; }
 
     /// <summary>Room needed right of the onset before the next onset can start, in staff spaces.</summary>
-    public double RightExtent { get; init; }
+    public double RightExtent { get; set; }
 }
 
 /// <summary>Chords of one voice joined by beams, all with stems in the same direction.</summary>
@@ -228,6 +237,9 @@ internal static class NotePreparation
         public required IReadOnlyList<int> ExtendEnds { get; init; }
         public required IReadOnlyList<Articulation> Articulations { get; init; }
         public required IReadOnlyList<PreparedGrace> Graces { get; init; }
+        public bool LetRing { get; init; }
+        public int Tremolo { get; init; }
+        public int TremoloToNext { get; init; }
         public required IReadOnlyList<BeamType> Beams { get; set; }
 
         /// <summary>The source's stem direction for the chord, if it gives one.</summary>
@@ -254,12 +266,20 @@ internal static class NotePreparation
             var pending = new List<PendingChord>();
             var staffRests = new List<PreparedChord>();
 
+            // Where each voice's two-note tremolo ends: the chord starting there is its second chord.
+            var tremoloEnds = new Dictionary<int, Rational>();
             foreach (var chordEvents in staffGroup.GroupBy(e => (e.Voice, Start: Start(e))).OrderBy(g => g.Key.Start))
             {
                 var first = chordEvents.First();
                 var duration = Duration(first);
                 var clef = clefs.ClefAt(partIndex, staff, measureIndex, Start(first));
-                var value = Notation.ValueOf(duration, TupletRatio(measure, first));
+                var tremoloToNext = chordEvents.Max(e => e.TremoloToNext);
+                var inTremolo = tremoloToNext > 0 || (tremoloEnds.TryGetValue(first.Voice, out var tremoloEnd) && tremoloEnd == Start(first));
+                if (tremoloToNext > 0) tremoloEnds[first.Voice] = Start(first) + duration;
+                else tremoloEnds.Remove(first.Voice);
+
+                // The chords of a two-note tremolo are written at twice their length (two half notes fill a half note's time).
+                var value = inTremolo ? Notation.ValueOf(duration * new Rational(2, 1)) : Notation.ValueOf(duration, TupletRatio(measure, first));
                 var role = multiVoice ? (first.Voice == voices[0] ? 1 : -1) : 0;
 
                 if (first.Kind == "Rest")
@@ -318,6 +338,7 @@ internal static class NotePreparation
                     ExtendEnds = chordEvents.SelectMany(e => e.ExtendEnds).Distinct().ToList(),
                     Articulations = chordEvents.SelectMany(e => e.Articulations).Distinct().OrderBy(a => a).ToList(),
                     Graces = PrepareGraces(chordEvents.FirstOrDefault(e => e.GraceNotes.Count > 0) ?? first, measure, clef),
+                    LetRing = chordEvents.Any(e => e.LetRing), Tremolo = chordEvents.Max(e => e.Tremolo), TremoloToNext = tremoloToNext,
                 });
             }
 
@@ -328,6 +349,9 @@ internal static class NotePreparation
                 var stemUp = chord.GroupStemUp ?? chord.SourceStemUp ?? StemUp(chord.Role, chord.Notes.Select(n => n.Position).ToList());
                 built[chord] = BuildChord(partIndex, staff, chord.First.Voice, Start(chord.First), Duration(chord.First), chord.Value, stemUp, chord.Role,
                     chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds, chord.Articulations, chord.Graces);
+                (built[chord].LetRing, built[chord].Tremolo, built[chord].TremoloToNext) = (chord.LetRing, chord.Tremolo, chord.TremoloToNext);
+                // Room for the bars of a two-note tremolo between the two chords.
+                if (chord.TremoloToNext > 0) built[chord].RightExtent += 2.5;
                 result.Add(built[chord]);
             }
 
