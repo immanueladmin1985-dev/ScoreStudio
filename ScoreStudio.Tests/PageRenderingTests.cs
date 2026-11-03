@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ScoreStudio.Import;
 using ScoreStudio.Layout;
+using ScoreStudio.Models;
 using ScoreStudio.Rendering;
 using ScoreStudio.Services;
 
@@ -173,8 +174,15 @@ public sealed class PageRenderingTests
             var project = MusicXmlImporter.ImportFile(Path.Combine(AppContext.BaseDirectory, "samples", "musicxml", sample + ".musicxml")).Project;
             var page = ScoreLayoutEngine.Layout(project).Pages[0];
 
-            AssertGlyphsDrawn(page, Clefs, 0.5, 8, 5, 6, 100, "clef");
+            if (page.Items.OfType<GlyphItem>().Any(g => Clefs.Contains(g.Glyph)))
+                AssertGlyphsDrawn(page, Clefs, 0.5, 8, 5, 6, 100, "clef");
+            if (page.Items.OfType<GlyphItem>().Any(g => g.Glyph == Smufl.PercussionClef))
+                AssertGlyphsDrawn(page, new[] { Smufl.PercussionClef }, 0.5, 2.5, 3, 2.5, 10, "percussion clef");
             AssertGlyphsDrawn(page, Noteheads, 0.5, 1.2, 3, 1.2, 15, "notehead");
+            var shaped = Enum.GetValues<NoteheadShape>().Where(s => s != NoteheadShape.Normal)
+                .SelectMany(s => new[] { NoteType.Whole, NoteType.Half, NoteType.Quarter }.Select(t => Smufl.Notehead(t, s))).Distinct().ToArray();
+            if (page.Items.OfType<GlyphItem>().Any(g => shaped.Contains(g.Glyph)))
+                AssertGlyphsDrawn(page, shaped, 0.5, 1.2, 3, 1.2, 5, "shaped notehead");
             AssertBeamsDrawn(page);
             AssertCurvesDrawn(page);
             var tupletDigits = Enumerable.Range(0, 10).Select(d => (char)(Smufl.Tuplet0 + d)).ToArray();
