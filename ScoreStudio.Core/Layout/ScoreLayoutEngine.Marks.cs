@@ -14,7 +14,7 @@ public static partial class ScoreLayoutEngine
         public List<PendingLine> Lines { get; } = new();
     }
 
-    private sealed record PendingLine(int PartIndex, ScoreLine Line, int EndMeasure, Rational EndPosition, bool Above);
+    private sealed record PendingLine(int PartIndex, ScoreLine Line, int EndMeasure, Rational EndPosition, bool Above, int StartMeasure = 0);
 
     private sealed record PendingSlur(int PartIndex, int EndStaff, int EndVoice, int EndMeasure, Rational EndPosition, bool Above);
 
@@ -429,6 +429,16 @@ public static partial class ScoreLayoutEngine
                                 : Math.Max(staffTop + 6.5 * sp, under.Select(c => c.Bottom).DefaultIfEmpty(staffTop).Max() + 2.2 * sp);
                         }
 
+                        if (direction.Kind is DirectionKind.Segno or DirectionKind.Coda)
+                        {
+                            // The sign stands on its baseline (the coda reaches a little below it), centred on its place.
+                            var (glyph, glyphWidth, descent) = direction.Kind == DirectionKind.Segno ? (Smufl.Segno, 2.228, 0.108) : (Smufl.Coda, 3.816, 0.632);
+                            var signBaseline = baseline - descent * sp;
+                            var signLeft = Free(slot, above, signBaseline, x + Smufl.NoteheadWidth(NoteType.Quarter) * sp / 2 - glyphWidth * sp / 2, glyphWidth * sp);
+                            items.Add(new GlyphItem(glyph, signLeft, signBaseline, 4 * sp));
+                            continue;
+                        }
+
                         if (direction.Kind == DirectionKind.Rehearsal && direction.Y is null) baseline -= padding + 0.5 * sp;
                         var left = Free(slot, above, baseline, x, width);
                         if (direction.Kind == DirectionKind.Rehearsal)
@@ -494,25 +504,37 @@ public static partial class ScoreLayoutEngine
             if (position >= measureAnchors[^1].Time && measureLayouts.FirstOrDefault(m => m.MeasureIndex == measure) is { } layout)
                 return layout.Right - 0.8 * sp;
             // Trill lines and brackets cover their last note.
-            return XAtTime(position, measureAnchors) + (kind == LineKind.Dashes ? 0 : 1.3 * sp);
+            return XAtTime(position, measureAnchors) + (kind is LineKind.Dashes or LineKind.Pedal ? 0 : 1.3 * sp);
         }
 
         double Height(ScoreLine line, int slot, bool above, double from, double to)
         {
             if (line.Y is { } y) return staffTops[slot] - y * sp;
             if (line.Kind == LineKind.Dashes) return rowBaseline(slot, above) - 0.5 * sp;
+            if (line.Kind == LineKind.Pedal && !above)
+                return Math.Max(staffTops[slot] + 7.5 * sp,
+                    placed.Where(c => c.Slot == slot && c.X >= from - sp && c.X <= to).Select(c => c.Bottom).DefaultIfEmpty(staffTops[slot]).Max() + 3.0 * sp);
             var under = placed.Where(c => c.Slot == slot && c.X >= from - sp && c.X <= to).ToList();
             return above
                 ? highest(slot, Math.Min(staffTops[slot] - (line.Kind == LineKind.TrillLine ? 1.3 : 2.0) * sp, under.Select(c => c.Top).DefaultIfEmpty(staffTops[slot]).Min() - 1.0 * sp))
                 : Math.Max(staffTops[slot] + 6 * sp, under.Select(c => c.Bottom).DefaultIfEmpty(staffTops[slot]).Max() + 1.5 * sp);
         }
 
-        void Draw(ScoreLine line, double x1, double x2, double y, bool startHook, bool endHook)
+        // Where a pedal changes inside this system, given the measure the pedal starts in.
+        List<double> ChangesIn(ScoreLine line, int startMeasure) => line.PedalChanges
+            .Where(c => anchors.ContainsKey(startMeasure + c.MeasureOffset))
+            .Select(c => XAtTime(new Rational(c.PositionNumerator, c.PositionDenominator), anchors[startMeasure + c.MeasureOffset]))
+            .ToList();
+
+        void Draw(ScoreLine line, double x1, double x2, double y, bool startHook, bool endHook, List<double>? changes = null)
         {
             if (x2 - x1 < sp) x2 = x1 + sp;
             var thickness = Smufl.StemThickness * sp * 1.2;
             switch (line.Kind)
             {
+                case LineKind.Pedal:
+                    DrawPedal(items, line, x1, x2, y, startHook, endHook, changes ?? new List<double>(), thickness, sp);
+                    break;
                 case LineKind.TrillLine:
                     AddZigzag(items, x1, y, x2, y, 0.22 * sp, 0.45 * sp, thickness);
                     break;
@@ -537,7 +559,7 @@ public static partial class ScoreLayoutEngine
             if (slot < 0) continue;
             var ends = carry.EndMeasure <= lastMeasure;
             var x2 = ends ? EndX(carry.Line.Kind, carry.EndMeasure, carry.EndPosition) : systemRight - 0.5 * sp;
-            Draw(carry.Line, contentLeft, x2, Height(carry.Line, slot, carry.Above, contentLeft, x2), false, ends);
+            Draw(carry.Line, contentLeft, x2, Height(carry.Line, slot, carry.Above, contentLeft, x2), false, ends, ChangesIn(carry.Line, carry.StartMeasure));
             if (!ends) pending.Lines.Add(carry);
         }
 
@@ -552,7 +574,7 @@ public static partial class ScoreLayoutEngine
                     var slot = slots.FindIndex(s => s.PartIndex == p && s.StaffIndex == line.Staff);
                     if (slot < 0) continue;
                     var position = new Rational(line.PositionNumerator, line.PositionDenominator);
-                    var above = line.Above ?? line.Kind != LineKind.Dashes;
+                    var above = line.Above ?? line.Kind is not (LineKind.Dashes or LineKind.Pedal);
                     var x1 = XAtTime(position, measureAnchors);
                     double? textBaseline = null;
                     if (line.Kind == LineKind.TrillLine)
@@ -571,11 +593,57 @@ public static partial class ScoreLayoutEngine
                     var ends = endMeasure <= lastMeasure;
                     var x2 = ends ? EndX(line.Kind, endMeasure, endPosition) : systemRight - 0.5 * sp;
                     var y = line.Y is null && textBaseline is { } b ? b : Height(line, slot, above, x1, x2);
-                    Draw(line, x1, x2, y, true, ends);
-                    if (!ends) pending.Lines.Add(new PendingLine(p, line, endMeasure, endPosition, above));
+                    Draw(line, x1, x2, y, true, ends, ChangesIn(line, planned.Index));
+                    if (!ends) pending.Lines.Add(new PendingLine(p, line, endMeasure, endPosition, above, planned.Index));
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// A pedal (docs/PEDAL_SEGNO_CODA.md) on baseline <paramref name="y"/>: "Ped." (or "Sost.") where it goes down and "*"
+    /// where it comes up, or a line with hooks up at both ends and a "^" notch where it changes, or "Ped." followed by
+    /// the line. <paramref name="starts"/> and <paramref name="ends"/> say whether the ends are in this system.
+    /// </summary>
+    private static void DrawPedal(List<DrawItem> items, ScoreLine line, double x1, double x2, double y, bool starts, bool ends,
+        List<double> changes, double thickness, double sp)
+    {
+        var (down, downWidth) = line.Sostenuto ? (Smufl.PedalSost, 4.428) : (Smufl.PedalPed, 4.076);
+        const double upWidth = 1.8;
+        const double hook = 1.0;
+        var lineStart = x1;
+        if (starts && line.PedalSign)
+        {
+            items.Add(new GlyphItem(down, x1, y, 4 * sp));
+            lineStart = x1 + (downWidth + 0.3) * sp;
+        }
+
+        if (!line.PedalLine)
+        {
+            // Signs only: "*" just before each change and at the end, "Ped." again at each change.
+            foreach (var change in changes)
+            {
+                items.Add(new GlyphItem(Smufl.PedalUp, change - (upWidth + 0.3) * sp, y, 4 * sp));
+                items.Add(new GlyphItem(down, change, y, 4 * sp));
+            }
+
+            if (ends) items.Add(new GlyphItem(Smufl.PedalUp, x2 - upWidth / 2 * sp, y, 4 * sp));
+            return;
+        }
+
+        if (starts && !line.PedalSign) items.Add(new LineItem(x1, y - hook * sp, x1, y, thickness));
+        var from = lineStart;
+        foreach (var change in changes.Where(c => c > lineStart && c < x2).Order())
+        {
+            // The notch: the line rises to a point at the change and comes down again.
+            items.Add(new LineItem(from, y, change - 0.5 * sp, y, thickness));
+            items.Add(new LineItem(change - 0.5 * sp, y, change, y - hook * sp, thickness));
+            items.Add(new LineItem(change, y - hook * sp, change + 0.5 * sp, y, thickness));
+            from = change + 0.5 * sp;
+        }
+
+        items.Add(new LineItem(from, y, Math.Max(from, x2), y, thickness));
+        if (ends) items.Add(new LineItem(x2, y, x2, y - hook * sp, thickness));
     }
 
     /// <summary>

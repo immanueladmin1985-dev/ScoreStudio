@@ -13,6 +13,11 @@ public static class Smufl
     public const char CClef = '\uE05C';
     public const char FClef = '\uE062';
     public const char PercussionClef = '\uE069'; // unpitchedPercussionClef1
+    public const char Segno = '\uE047';
+    public const char Coda = '\uE048';
+    public const char PedalPed = '\uE650';  // keyboardPedalPed, "Ped."; glyphs stand on their baseline
+    public const char PedalUp = '\uE655';   // keyboardPedalUp, "*"
+    public const char PedalSost = '\uE659'; // keyboardPedalSost, "Sost."
     public const char Brace = '\uE000';
     public const char BracketTop = '\uE003';
     public const char BracketBottom = '\uE004';

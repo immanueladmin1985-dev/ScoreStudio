@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments).
+        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -403,6 +403,12 @@ public static class ProjectFileService
                 || l.StartHook is < -1 or > 1 || l.EndHook is < -1 or > 1
                 || !IsPosition(l.PositionNumerator, l.PositionDenominator) || !IsPosition(l.EndPositionNumerator, l.EndPositionDenominator)))
             throw Corrupt($"{where}의 괄호선·점선·트릴 연장선 정보가 올바르지 않습니다.");
+        foreach (var line in measure.Lines)
+        {
+            line.PedalChanges ??= new List<ScoreLineChange>();
+            if (line.PedalChanges.Any(c => c is null || c.MeasureOffset < 0 || c.MeasureOffset > line.EndMeasureOffset || !IsPosition(c.PositionNumerator, c.PositionDenominator)))
+                throw Corrupt($"{where}의 페달 정보가 올바르지 않습니다.");
+        }
 
         measure.Slurs ??= new List<ScoreSlur>();
         if (measure.Slurs.Any(s => s is null || !IsStaff(s.Staff) || !IsStaff(s.EndStaff) || s.Voice < 1 || s.EndVoice < 1 || s.EndMeasureOffset < 0

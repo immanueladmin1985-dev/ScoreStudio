@@ -240,6 +240,44 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void Pedals_Segno_AndCoda_AreKept()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("pedal-segno-coda.musicxml"));
+        Assert.Empty(result.Warnings);
+        var measures = result.Project.Parts[0].Measures;
+
+        var signs = measures.SelectMany(m => m.Directions).Where(d => d.Kind is DirectionKind.Segno or DirectionKind.Coda)
+            .Select(d => (d.Kind, d.Staff, d.PositionNumerator)).ToList();
+        Assert.Equal(new[] { (DirectionKind.Segno, 0, 0), (DirectionKind.Coda, 0, 4) }, signs); // the coda from the right barline
+        Assert.Contains(measures[2].Directions, d => d.Kind == DirectionKind.Words && d.Text == "D.S. al Coda");
+
+        var pedals = measures.Select((m, i) => m.Lines.Select(l => (Measure: i, Line: l))).SelectMany(x => x).ToList();
+        Assert.All(pedals, p => Assert.Equal((LineKind.Pedal, 1, (bool?)false), (p.Line.Kind, p.Line.Staff, p.Line.Above)));
+        Assert.Equal(new[] { "0: 0→0/3 sign", "1: 0→1/2 line changes 0/2", "2: 2→1/3 sign sost" },
+            pedals.Select(p => $"{p.Measure}: {p.Line.PositionNumerator}→{p.Line.EndMeasureOffset}/{p.Line.EndPositionNumerator}"
+                + (p.Line.PedalSign ? " sign" : "") + (p.Line.PedalLine ? " line" : "") + (p.Line.Sostenuto ? " sost" : "")
+                + (p.Line.PedalChanges.Count > 0 ? " changes " + string.Join(",", p.Line.PedalChanges.Select(c => $"{c.MeasureOffset}/{c.PositionNumerator}")) : "")));
+    }
+
+    [Fact]
+    public void UnendedPedals_AndPedalSignsWithoutLineOrSign_FollowMusicXmlRules()
+    {
+        // Without a sign attribute a pedal shows signs unless it is a line; a pedal that never comes up is dropped.
+        var xml = OneMeasure("", """
+            <direction><direction-type><pedal type="start"/></direction-type></direction>
+            <direction><direction-type><pedal type="stop"/></direction-type><offset>2</offset></direction>
+            <direction><direction-type><pedal type="start" line="yes" number="2"/></direction-type></direction>
+            <direction><direction-type><pedal type="discontinue"/></direction-type></direction>
+            """);
+        var result = MusicXmlImporter.ImportXml(xml, "페달");
+
+        var pedal = Assert.Single(result.Project.Parts[0].Measures[0].Lines);
+        Assert.Equal((true, false, 2), (pedal.PedalSign, pedal.PedalLine, pedal.EndPositionNumerator));
+        Assert.Equal(new[] { "끝나지 않은 페달은 가져오지 않음", "페달 중단·재개(discontinue·resume) 표시는 가져오지 않음" },
+            result.Warnings.Select(w => w.Message).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -316,12 +354,12 @@ public sealed class MusicXmlImporterTests : IDisposable
         Assert.Equal(
             new Dictionary<string, int>
             {
-                ["페달"] = 1,
+                ["지시 기호 <damp>"] = 1,
                 ["장식음 기호 <schleifer>"] = 1,
                 ["기타 아티큘레이션(숨표, 중간 휴지 등)"] = 1,
             },
             warnings);
-        Assert.Equal("플루트 1마디", result.Warnings.First(w => w.Message == "페달").FirstLocation);
+        Assert.Equal("플루트 1마디", result.Warnings.First(w => w.Message == "지시 기호 <damp>").FirstLocation);
 
         var part = result.Project.Parts.Single();
         Assert.Equal(ClefType.Treble, part.Staves.Single().Clef);
@@ -952,6 +990,7 @@ public sealed class MusicXmlImporterTests : IDisposable
     [InlineData("lyrics-ties.musicxml")]
     [InlineData("percussion.musicxml")]
     [InlineData("finale-marks-2.musicxml")]
+    [InlineData("pedal-segno-coda.musicxml")]
     public void ImportedProject_SurvivesSaveAndReopen(string file)
     {
         var imported = MusicXmlImporter.ImportFile(Sample(file)).Project;

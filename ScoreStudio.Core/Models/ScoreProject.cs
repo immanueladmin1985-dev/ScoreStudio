@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 23;
+    public const int CurrentSchemaVersion = 24;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -337,6 +337,18 @@ public enum LineKind
 
     /// <summary>A trill's wavy extension line.</summary>
     TrillLine,
+
+    /// <summary>A piano pedal from where it goes down to where it comes up (docs/PEDAL_SEGNO_CODA.md).</summary>
+    Pedal,
+}
+
+/// <summary>A place inside a pedal where it comes up and goes straight down again.</summary>
+public sealed class ScoreLineChange
+{
+    /// <summary>Measures after the one that holds the pedal.</summary>
+    public int MeasureOffset { get; set; }
+    public int PositionNumerator { get; set; }
+    public int PositionDenominator { get; set; } = 1;
 }
 
 /// <summary>A line over a stretch of a staff, from a point in the measure that holds it to a point in a later one.</summary>
@@ -366,6 +378,18 @@ public sealed class ScoreLine
     public int StartHook { get; set; }
 
     public int EndHook { get; set; }
+
+    /// <summary>A pedal written with signs: "Ped." (or "Sost.") where it starts and, without a line, "*" where it ends.</summary>
+    public bool PedalSign { get; set; }
+
+    /// <summary>A pedal written as a line with hooks up at both ends.</summary>
+    public bool PedalLine { get; set; }
+
+    /// <summary>The sostenuto (middle) pedal rather than the damper pedal.</summary>
+    public bool Sostenuto { get; set; }
+
+    /// <summary>Where a pedal changes (comes up and goes down again), in order.</summary>
+    public List<ScoreLineChange> PedalChanges { get; set; } = new();
 }
 
 /// <summary>What a <see cref="ScoreDirection"/> is. Stored in project files by name.</summary>
@@ -382,6 +406,12 @@ public enum DirectionKind
 
     /// <summary>A rehearsal mark such as "A" or "12", in bold, boxed unless <see cref="ScoreDirection.Boxed"/> is false.</summary>
     Rehearsal,
+
+    /// <summary>The segno sign (docs/PEDAL_SEGNO_CODA.md).</summary>
+    Segno,
+
+    /// <summary>The coda sign.</summary>
+    Coda,
 }
 
 /// <summary>A mark at one point of a staff that is not attached to a note: a dynamic, a text or a metronome mark.</summary>

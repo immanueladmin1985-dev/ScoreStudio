@@ -381,9 +381,6 @@ public static class MusicXmlImporter
 
         private static readonly Dictionary<string, string> DirectionNames = new()
         {
-            ["pedal"] = "페달",
-            ["segno"] = "세뇨·코다",
-            ["coda"] = "세뇨·코다",
             ["other-direction"] = "기타 지시 기호",
         };
 
@@ -446,6 +443,9 @@ public static class MusicXmlImporter
         /// <summary>Bracket, dashes and trill lines started and not yet stopped, by kind and number.</summary>
         private readonly Dictionary<string, (int Index, ScoreMeasure Measure, ScoreLine Line)> _openLines = new();
 
+        /// <summary>Pedals down and not yet up, by number (docs/PEDAL_SEGNO_CODA.md).</summary>
+        private readonly Dictionary<string, (int Index, ScoreMeasure Measure, ScoreLine Line)> _openPedals = new();
+
         /// <summary>Grace notes read and waiting for the note of their staff and voice that follows them.</summary>
         private readonly Dictionary<(int Staff, int Voice), List<ScoreGraceNote>> _pendingGraces = new();
 
@@ -502,6 +502,8 @@ public static class MusicXmlImporter
                 Warn("끝나지 않은 크레셴도·디크레셴도는 가져오지 않음");
             foreach (var _ in _openGlissandos)
                 Warn("끝나지 않은 글리산도는 가져오지 않음");
+            foreach (var _ in _openPedals)
+                Warn("끝나지 않은 페달은 가져오지 않음");
             foreach (var _ in _openLines)
                 Warn("끝나지 않은 괄호선·점선·트릴 연장선은 가져오지 않음");
 
@@ -1584,6 +1586,15 @@ public static class MusicXmlImporter
                     case "dashes":
                         ReadLine(type, LineKind.Dashes, measure, staff, position, above);
                         break;
+                    case "pedal":
+                        ReadPedal(type, measure, staff, position, above);
+                        break;
+                    case "segno" or "coda":
+                        AddDirection(measure, new ScoreDirection
+                        {
+                            Kind = type.Name == "segno" ? DirectionKind.Segno : DirectionKind.Coda, Staff = staff, Above = above, Y = DefaultY(type),
+                        }, position);
+                        break;
                     case "rehearsal" when type.Value.Trim().Length > 0:
                         AddDirection(measure, new ScoreDirection
                         {
@@ -1741,6 +1752,58 @@ public static class MusicXmlImporter
             }
         }
 
+        /// <summary>
+        /// A pedal (docs/PEDAL_SEGNO_CODA.md) goes down with type start (or sostenuto), changes with change and comes up
+        /// with stop. Without a sign attribute, MusicXML's rule applies: signs unless it is drawn as a line.
+        /// </summary>
+        private void ReadPedal(XElement pedal, ScoreMeasure measure, int staff, Rational position, bool? above)
+        {
+            var key = SpanNumber(pedal);
+            var type = (string?)pedal.Attribute("type");
+            if (type == "change" && _openPedals.TryGetValue(key, out var changing))
+            {
+                var change = new ScoreLineChange { MeasureOffset = _measureIndex - changing.Index };
+                if (TrySetFraction(position, (a, b) => (change.PositionNumerator, change.PositionDenominator) = (a, b)))
+                    changing.Line.PedalChanges.Add(change);
+                return;
+            }
+
+            switch (type)
+            {
+                case "start" or "sostenuto" or "change":
+                {
+                    var line = (string?)pedal.Attribute("line") == "yes";
+                    var pedalLine = new ScoreLine
+                    {
+                        Kind = LineKind.Pedal, Staff = staff, Above = above, Y = DefaultY(pedal), PedalLine = line, Sostenuto = type == "sostenuto",
+                        PedalSign = (string?)pedal.Attribute("sign") switch { "yes" => true, "no" => false, _ => !line },
+                    };
+                    if (_openPedals.Remove(key)) Warn("끝나지 않은 페달은 가져오지 않음");
+                    if (TrySetFraction(position, (a, b) => (pedalLine.PositionNumerator, pedalLine.PositionDenominator) = (a, b)))
+                        _openPedals[key] = (_measureIndex, measure, pedalLine);
+                    break;
+                }
+                case "stop":
+                {
+                    if (!_openPedals.Remove(key, out var open))
+                    {
+                        Warn("밟은 자리가 없는 페달 떼기는 무시함");
+                        return;
+                    }
+
+                    open.Line.EndMeasureOffset = _measureIndex - open.Index;
+                    if (TrySetFraction(position, (a, b) => (open.Line.EndPositionNumerator, open.Line.EndPositionDenominator) = (a, b)))
+                        open.Measure.Lines.Add(open.Line);
+                    break;
+                }
+                case "continue":
+                    break;
+                default:
+                    Warn("페달 중단·재개(discontinue·resume) 표시는 가져오지 않음");
+                    break;
+            }
+        }
+
         /// <summary>A hairpin starts with type crescendo or diminuendo and ends with a stop of the same number.</summary>
         private void ReadWedge(XElement wedge, ScoreMeasure measure, int staff, Rational position, bool? above)
         {
@@ -1793,7 +1856,10 @@ public static class MusicXmlImporter
                 ReadEnding(ending, measure, index);
 
             if (barline.Element("fermata") is not null) Warn("페르마타");
-            if (barline.Element("segno") is not null || barline.Element("coda") is not null) Warn("세뇨·코다");
+            // A segno or coda on a barline goes at the start or the end of the measure.
+            var at = (string?)barline.Attribute("location") == "left" ? Rational.Zero : new Rational(4L * measure.Numerator, measure.Denominator);
+            foreach (var sign in barline.Elements().Where(e => e.Name.LocalName is "segno" or "coda"))
+                AddDirection(measure, new ScoreDirection { Kind = sign.Name == "segno" ? DirectionKind.Segno : DirectionKind.Coda, Above = true }, at);
         }
 
         /// <summary>

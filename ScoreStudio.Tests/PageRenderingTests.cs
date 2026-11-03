@@ -167,6 +167,7 @@ public sealed class PageRenderingTests
     [InlineData("ornaments")]
     [InlineData("finale-marks-2")]
     [InlineData("percussion")]
+    [InlineData("pedal-segno-coda")]
     public void ImportedMusicXml_DrawsClefsAndNoteheadsWhereTheLayoutPutsThem(string sample)
     {
         RunSta(() =>

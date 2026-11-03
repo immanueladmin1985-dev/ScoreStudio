@@ -471,6 +471,33 @@ public sealed class ProjectFileServiceTests : IDisposable
         Assert.Equal((true, "B4", "I1", NoteheadShape.Triangle), (note.Unpitched, note.NotationSpelling, note.Instrument, note.Notehead));
     }
 
+    [Fact]
+    public void Load_Version23File_HasNoPedalChanges_AndPedalsSurviveSaveAndReopen()
+    {
+        var old = ProjectFileService.Parse("""{ "SchemaVersion": 23, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Bracket" } ] } ] } ] }""");
+        var bracket = old.Parts[0].Measures[0].Lines.Single();
+        Assert.Equal((false, false, false), (bracket.PedalSign, bracket.PedalLine, bracket.Sostenuto));
+        Assert.Empty(bracket.PedalChanges);
+
+        var project = ScoreProject.CreateNew();
+        var measure = project.Parts[0].Measures[0];
+        measure.Directions.Add(new ScoreDirection { Kind = DirectionKind.Coda, PositionNumerator = 2 });
+        measure.Lines.Add(new ScoreLine
+        {
+            Kind = LineKind.Pedal, PedalLine = true, Sostenuto = true, EndMeasureOffset = 1, EndPositionNumerator = 2,
+            PedalChanges = { new ScoreLineChange { MeasureOffset = 1, PositionNumerator = 1, PositionDenominator = 2 } },
+        });
+        var path = PathFor("pedal.scoreproj");
+        ProjectFileService.Save(path, project);
+
+        var reopened = ProjectFileService.Load(path).Parts[0].Measures[0];
+        Assert.Equal((DirectionKind.Coda, 2), (reopened.Directions.Single().Kind, reopened.Directions.Single().PositionNumerator));
+        var pedal = reopened.Lines.Single();
+        Assert.Equal((LineKind.Pedal, true, false, true), (pedal.Kind, pedal.PedalLine, pedal.PedalSign, pedal.Sostenuto));
+        var change = pedal.PedalChanges.Single();
+        Assert.Equal((1, 1, 2), (change.MeasureOffset, change.PositionNumerator, change.PositionDenominator));
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -562,6 +589,9 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 23, "Parts": [ { "Instruments": [ null ] } ] }""", "악기 정보" },
         { """{ "SchemaVersion": 23, "Parts": [ { "Measures": [ { "Events": [ { "Instrument": "I9" } ] } ] } ] }""", "음표머리·악기" },
         { """{ "SchemaVersion": 23, "Parts": [ { "Measures": [ { "Events": [ { "Notehead": "Star" } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 24, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Pedal", "PedalChanges": [ { "MeasureOffset": 1 } ] } ] } ] } ] }""", "페달" },
+        { """{ "SchemaVersion": 24, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Pedal", "PedalChanges": [ { "PositionDenominator": 0 } ] } ] } ] } ] }""", "페달" },
+        { """{ "SchemaVersion": 24, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Pedal", "PedalChanges": [ null ] } ] } ] } ] }""", "페달" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Tablature" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };

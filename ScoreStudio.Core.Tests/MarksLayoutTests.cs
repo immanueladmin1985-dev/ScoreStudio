@@ -301,4 +301,45 @@ public sealed class MarksLayoutTests
         Assert.All(barlines, b => Assert.Equal((top + Sp, top + 3 * Sp), (Math.Min(b.Y1, b.Y2), Math.Max(b.Y1, b.Y2))));
         Glyph(page, Smufl.Notehead(NoteType.Half, NoteheadShape.Triangle));
     }
+
+    [Fact]
+    public void PedalSigns_AreBelowTheStaff_AndAPedalLineHasHooksAndANotch()
+    {
+        var project = Score(2, Note("C5", 72, 0, 2), Note("D5", 74, 2, 2));
+        project.Parts[0].Measures[1].Events.Add(Note("E5", 76, 0, 4));
+        var first = project.Parts[0].Measures[0];
+        first.Lines.Add(new ScoreLine { Kind = LineKind.Pedal, PedalSign = true, PositionNumerator = 0, EndPositionNumerator = 2 });
+        project.Parts[0].Measures[1].Lines.Add(new ScoreLine
+        {
+            Kind = LineKind.Pedal, PedalLine = true, PositionNumerator = 0, EndPositionNumerator = 3,
+            PedalChanges = { new ScoreLineChange { PositionNumerator = 2 } },
+        });
+        first.Directions.Add(new ScoreDirection { Kind = DirectionKind.Segno });
+        var (page, top) = Layout(project);
+
+        var ped = Glyph(page, Smufl.PedalPed);
+        var star = Glyph(page, Smufl.PedalUp);
+        Assert.True(ped.Y > top + 4 * Sp && star.Y > top + 4 * Sp, "below the staff");
+        Assert.True(star.X > ped.X + 3 * Sp, "the release comes later");
+        Assert.True(Glyph(page, Smufl.Segno).Y < top, "the segno is above the staff");
+
+        var below = page.Items.OfType<LineItem>().Where(l => Math.Min(l.Y1, l.Y2) > top + 5 * Sp).ToList();
+        Assert.Equal(2, below.Count(l => l.X1 == l.X2)); // the hooks
+        Assert.All(below.Where(l => l.X1 == l.X2), h => Assert.Equal(Sp, Math.Abs(h.Y2 - h.Y1), 6));
+        Assert.Equal(2, below.Count(l => l.X1 != l.X2 && l.Y1 != l.Y2)); // the notch
+    }
+
+    [Fact]
+    public void PedalLine_ToALaterSystem_IsDrawnInBothSystems()
+    {
+        var project = Score(3, Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[2].SystemBreak = true;
+        project.Parts[0].Measures[0].Lines.Add(new ScoreLine { Kind = LineKind.Pedal, PedalLine = true, EndMeasureOffset = 2, EndPositionNumerator = 2 });
+        var layout = ScoreLayoutEngine.Layout(project);
+        var systems = layout.Pages[0].Systems;
+
+        var hooks = layout.Pages[0].Items.OfType<LineItem>().Where(l => l.X1 == l.X2 && Math.Abs(Math.Abs(l.Y2 - l.Y1) - Sp) < 1e-6).ToList();
+        Assert.Single(hooks, h => h.Y1 < systems[1].Top); // the start, in the first system
+        Assert.Single(hooks, h => h.Y1 > systems[1].Top); // the end, in the second
+    }
 }

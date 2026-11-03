@@ -167,6 +167,7 @@ public static partial class MusicXmlExporter
                 {
                     Add(new Rational(l.PositionNumerator, l.PositionDenominator).Denominator);
                     Add(new Rational(l.EndPositionNumerator, l.EndPositionDenominator).Denominator);
+                    foreach (var change in l.PedalChanges) Add(new Rational(change.PositionNumerator, change.PositionDenominator).Denominator);
                 }
 
                 foreach (var h in measure.Hairpins)
@@ -383,6 +384,21 @@ public static partial class MusicXmlExporter
                         if (line.Y is { } y) mark.Add(new XAttribute("default-y", Number(y * 10)));
                         Mark(_ornamentMarks, first, mark);
                         Mark(_ornamentMarks, last, new XElement("wavy-line", new XAttribute("type", "stop"), new XAttribute("number", numbers[i])));
+                        continue;
+                    }
+
+                    if (kind == LineKind.Pedal)
+                    {
+                        // docs/PEDAL_SEGNO_CODA.md: down, changes, up.
+                        XElement Pedal(string type) => new("pedal", new XAttribute("type", type), new XAttribute("number", numbers[i]),
+                            new XAttribute("line", line.PedalLine ? "yes" : "no"), new XAttribute("sign", line.PedalSign ? "yes" : "no"));
+                        var down = Pedal(line.Sostenuto ? "sostenuto" : "start");
+                        if (line.Y is { } pedalY) down.Add(new XAttribute("default-y", Number(pedalY * 10)));
+                        AddDirectionMark(m, line.Staff, start, down, line.Above);
+                        foreach (var change in line.PedalChanges)
+                            AddDirectionMark(Math.Min(_part.Measures.Count - 1, m + change.MeasureOffset), line.Staff,
+                                new Rational(change.PositionNumerator, change.PositionDenominator), Pedal("change"), line.Above);
+                        AddDirectionMark(end, line.Staff, stop, Pedal("stop"), line.Above);
                         continue;
                     }
 
@@ -721,6 +737,9 @@ public static partial class MusicXmlExporter
                     type = new XElement("dynamics", DynamicElements.Contains(direction.Text)
                         ? new XElement(direction.Text)
                         : new XElement("other-dynamics", direction.Text));
+                    break;
+                case DirectionKind.Segno or DirectionKind.Coda:
+                    type = new XElement(direction.Kind == DirectionKind.Segno ? "segno" : "coda");
                     break;
                 case DirectionKind.Rehearsal:
                     type = new XElement("rehearsal", new XAttribute("enclosure", direction.Boxed ? "square" : "none"), direction.Text);
