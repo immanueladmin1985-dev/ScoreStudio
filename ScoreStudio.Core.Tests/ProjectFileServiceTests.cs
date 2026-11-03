@@ -447,6 +447,30 @@ public sealed class ProjectFileServiceTests : IDisposable
         Assert.Equal((LineKind.Bracket, (bool?)true, true, -1, 1, 3), (line.Kind, line.Above, line.Dashed, line.StartHook, line.EndHook, line.EndPositionNumerator));
     }
 
+    [Fact]
+    public void Load_Version22File_HasPitchedNotesOnFiveLineStaves_AndPercussionSurvivesSaveAndReopen()
+    {
+        var old = ProjectFileService.Parse("""{ "SchemaVersion": 22, "Parts": [ { "Staves": [ { "Clef": "Treble" } ], "Measures": [ { "Events": [ {} ] } ] } ] }""").Parts[0];
+        Assert.Equal(5, old.Staves[0].Lines);
+        Assert.Empty(old.Instruments);
+        Assert.Equal((false, "", NoteheadShape.Normal), (old.Measures[0].Events[0].Unpitched, old.Measures[0].Events[0].Instrument, old.Measures[0].Events[0].Notehead));
+
+        var project = ScoreProject.CreateNew();
+        var part = project.Parts[0];
+        part.Staves[0] = new ScoreStaff { Clef = ClefType.Percussion, Lines = 1 };
+        part.Instruments.Add(new ScoreInstrument { Id = "I1", Name = "Triangle", MidiChannel = 10, MidiUnpitched = 82 });
+        part.Measures[0].Events.Add(new ScoreEvent { Unpitched = true, NotationSpelling = "B4", MidiPitch = 81, Instrument = "I1", Notehead = NoteheadShape.Triangle });
+        var path = PathFor("percussion.scoreproj");
+        ProjectFileService.Save(path, project);
+
+        var reopened = ProjectFileService.Load(path).Parts[0];
+        Assert.Equal((ClefType.Percussion, 1), (reopened.Staves[0].Clef, reopened.Staves[0].Lines));
+        var instrument = Assert.Single(reopened.Instruments);
+        Assert.Equal(("I1", "Triangle", (int?)10, (int?)null, (int?)82), (instrument.Id, instrument.Name, instrument.MidiChannel, instrument.MidiProgram, instrument.MidiUnpitched));
+        var note = reopened.Measures[0].Events.Single();
+        Assert.Equal((true, "B4", "I1", NoteheadShape.Triangle), (note.Unpitched, note.NotationSpelling, note.Instrument, note.Notehead));
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -530,7 +554,15 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Lines": [ { "StartHook": 2 } ] } ] } ] }""", "괄호선" },
         { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Wave" } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 22, "Parts": [ { "Measures": [ { "Lines": [ { "EndPositionDenominator": 0 } ] } ] } ] }""", "괄호선" },
-        { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Percussion" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 23, "Parts": [ { "Staves": [ { "Lines": 0 } ] } ] }""", "줄 수(0)" },
+        { """{ "SchemaVersion": 23, "Parts": [ { "Staves": [ { "Lines": 6 } ] } ] }""", "줄 수(6)" },
+        { """{ "SchemaVersion": 23, "Parts": [ { "Instruments": [ { "Id": "" } ] } ] }""", "악기 정보" },
+        { """{ "SchemaVersion": 23, "Parts": [ { "Instruments": [ { "Id": "I1" }, { "Id": "I1" } ] } ] }""", "악기 정보" },
+        { """{ "SchemaVersion": 23, "Parts": [ { "Instruments": [ { "Id": "I1", "MidiUnpitched": 0 } ] } ] }""", "악기 정보" },
+        { """{ "SchemaVersion": 23, "Parts": [ { "Instruments": [ null ] } ] }""", "악기 정보" },
+        { """{ "SchemaVersion": 23, "Parts": [ { "Measures": [ { "Events": [ { "Instrument": "I9" } ] } ] } ] }""", "음표머리·악기" },
+        { """{ "SchemaVersion": 23, "Parts": [ { "Measures": [ { "Events": [ { "Notehead": "Star" } ] } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Tablature" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };
 

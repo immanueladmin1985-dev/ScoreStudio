@@ -174,6 +174,7 @@ public sealed partial class ScoreEditor
     public EditResult Respell()
     {
         if (Selection is not { } at || ChordAt(at) is not { } chord || chord[0].Kind != "Note") return EditResult.Refused("이름을 바꿀 음표를 먼저 선택하세요.");
+        if (chord.Any(e => e.Unpitched)) return EditResult.Refused("타악기 음표는 음 이름이 없습니다.");
         return Change(() =>
         {
             var key = MeasureAt(at).KeyFifths;

@@ -12,6 +12,7 @@ public static class Smufl
     public const char GClef8vb = '\uE052';
     public const char CClef = '\uE05C';
     public const char FClef = '\uE062';
+    public const char PercussionClef = '\uE069'; // unpitchedPercussionClef1
     public const char Brace = '\uE000';
     public const char BracketTop = '\uE003';
     public const char BracketBottom = '\uE004';
@@ -88,6 +89,7 @@ public static class Smufl
         ClefType.Treble8vb => GClef8vb,
         ClefType.Bass => FClef,
         ClefType.Alto or ClefType.Tenor => CClef,
+        ClefType.Percussion => PercussionClef,
         _ => throw new ArgumentOutOfRangeException(nameof(clef), clef, null),
     };
 
@@ -97,6 +99,7 @@ public static class Smufl
         ClefType.Treble8vb => 2.656,
         ClefType.Bass => 2.736,
         ClefType.Alto or ClefType.Tenor => 2.796,
+        ClefType.Percussion => 1.528,
         _ => throw new ArgumentOutOfRangeException(nameof(clef), clef, null),
     };
 
@@ -107,6 +110,7 @@ public static class Smufl
         ClefType.Bass => 1,                         // F line: second from the top
         ClefType.Alto => 2,                         // middle line
         ClefType.Tenor => 1,                        // fourth line from the bottom
+        ClefType.Percussion => 2,                   // centred on the middle line
         _ => throw new ArgumentOutOfRangeException(nameof(clef), clef, null),
     };
 
@@ -123,6 +127,45 @@ public static class Smufl
         NoteType.Half => NoteheadHalf,
         _ => NoteheadBlack,
     };
+
+    /// <summary>
+    /// The notehead glyph for a shape (docs/PERCUSSION.md): each shape has black, half and whole forms. A breve uses
+    /// the whole form.
+    /// </summary>
+    public static char Notehead(NoteType type, NoteheadShape shape)
+    {
+        if (shape == NoteheadShape.Normal) return Notehead(type);
+        var form = type <= NoteType.Whole ? 0 : type == NoteType.Half ? 1 : 2;
+        return shape switch
+        {
+            NoteheadShape.X => "\uE0A7\uE0A8\uE0A9"[form],
+            NoteheadShape.CircleX => "\uE0B1\uE0B2\uE0B3"[form],
+            NoteheadShape.Diamond => "\uE0D8\uE0D9\uE0DB"[form],
+            NoteheadShape.Triangle => "\uE0BB\uE0BC\uE0BE"[form],
+            NoteheadShape.InvertedTriangle => "\uE0C4\uE0C5\uE0C7"[form],
+            NoteheadShape.Square => "\uE0B8\uE0B8\uE0B9"[form],
+            NoteheadShape.Slash => "\uE102\uE103\uE101"[form],
+            NoteheadShape.Cross => "\uE0AD\uE0AE\uE0AF"[form],
+            _ => Notehead(type),
+        };
+    }
+
+    /// <summary>Advance widths of the shaped notehead glyphs (Bravura), keyed by glyph.</summary>
+    private static readonly Dictionary<char, double> ShapedNoteheadWidths = new()
+    {
+        ['\uE0A7'] = 1.508, ['\uE0A8'] = 1.336, ['\uE0A9'] = 1.16,
+        ['\uE0B1'] = 0.996, ['\uE0B2'] = 1.0, ['\uE0B3'] = 0.996,
+        ['\uE0D8'] = 1.08, ['\uE0D9'] = 1.004, ['\uE0DB'] = 1.0,
+        ['\uE0BB'] = 1.276, ['\uE0BC'] = 1.14, ['\uE0BE'] = 1.172,
+        ['\uE0C4'] = 1.276, ['\uE0C5'] = 1.14, ['\uE0C7'] = 1.168,
+        ['\uE0B8'] = 1.252, ['\uE0B9'] = 1.252,
+        ['\uE102'] = 3.92, ['\uE103'] = 3.12, ['\uE101'] = 2.124,
+        ['\uE0AD'] = 1.14, ['\uE0AE'] = 1.044, ['\uE0AF'] = 0.996,
+    };
+
+    /// <summary>Width of a shaped notehead glyph; spacing still uses <see cref="NoteheadWidth(NoteType)"/>, and the glyph is centred in it.</summary>
+    public static double NoteheadWidth(NoteType type, NoteheadShape shape) =>
+        ShapedNoteheadWidths.TryGetValue(Notehead(type, shape), out var width) ? width : NoteheadWidth(type);
 
     public static double NoteheadWidth(NoteType type) => type switch
     {

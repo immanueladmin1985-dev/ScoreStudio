@@ -294,6 +294,8 @@ public sealed partial class ScoreEditor
     {
         if (Selection is not { } at || ChordAt(at) is not { Count: > 0 } chord || chord[0].Kind == "Rest")
             return EditResult.Refused("음높이를 바꿀 음표를 먼저 선택하세요.");
+        if (chord.Any(e => e.Unpitched))
+            return EditResult.Refused("타악기 음표는 음높이가 없어 반음·옥타브로 옮길 수 없습니다. 위·아래 화살표로 자리를 옮기세요.");
 
         return Change(() =>
         {
@@ -818,18 +820,23 @@ public sealed partial class ScoreEditor
     }
 
     /// <summary>A note of <paramref name="step"/> in the key, in the octave nearest to <paramref name="reference"/>.</summary>
-    private static ScoreEvent? MakeNote(EditPosition at, int step, int reference, int keyFifths) =>
+    private ScoreEvent? MakeNote(EditPosition at, int step, int reference, int keyFifths) =>
         NoteAt(at, (int)Math.Round((reference - step) / 7.0, MidpointRounding.AwayFromZero), step, keyFifths);
 
-    private static ScoreEvent? NoteAt(EditPosition at, int octave, int step, int keyFifths)
+    /// <summary>
+    /// A new note at a staff place. On a percussion staff it is an unpitched note: the place is all it has, without the
+    /// key's sharps or flats (docs/PERCUSSION.md).
+    /// </summary>
+    private ScoreEvent? NoteAt(EditPosition at, int octave, int step, int keyFifths)
     {
-        var alter = Notation.KeyAlter(keyFifths, step);
+        var unpitched = new ClefTimeline(Project).ClefAt(at.Part, at.Staff, at.Measure, at.Position) == ClefType.Percussion;
+        var alter = unpitched ? 0 : Notation.KeyAlter(keyFifths, step);
         var midi = 12 * (octave + 1) + StepSemitones[step] + alter;
         if (midi is < 0 or > 127) return null;
         var accidental = alter > 0 ? new string('#', alter) : new string('b', -alter);
         return new ScoreEvent
         {
-            Kind = "Note", MidiPitch = midi, Staff = at.Staff, Voice = at.Voice,
+            Kind = "Note", MidiPitch = midi, Staff = at.Staff, Voice = at.Voice, Unpitched = unpitched,
             NotationSpelling = $"{StepLetters[step]}{accidental}{octave.ToString(CultureInfo.InvariantCulture)}",
         };
     }

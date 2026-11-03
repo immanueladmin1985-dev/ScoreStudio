@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 22;
+    public const int CurrentSchemaVersion = 23;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -66,6 +66,28 @@ public sealed class ScorePart
     /// are kept and shown as written; this is carried so the score keeps sounding right in other programs. Null for none.
     /// </summary>
     public ScoreTranspose? Transpose { get; set; }
+
+    /// <summary>
+    /// The part's instruments when it has several (a drum set) or plays unpitched sounds (docs/PERCUSSION.md); notes
+    /// point at one by <see cref="ScoreEvent.Instrument"/>. Empty for an ordinary part, which has just <see cref="Instrument"/>.
+    /// </summary>
+    public List<ScoreInstrument> Instruments { get; set; } = new();
+}
+
+/// <summary>One instrument of a part, as MusicXML's &lt;score-instrument&gt; and &lt;midi-instrument&gt;.</summary>
+public sealed class ScoreInstrument
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+
+    /// <summary>MIDI channel 1–16, or null.</summary>
+    public int? MidiChannel { get; set; }
+
+    /// <summary>MIDI program 1–128, or null.</summary>
+    public int? MidiProgram { get; set; }
+
+    /// <summary>The MIDI key (1–128, MusicXML numbering) an unpitched note of this instrument plays, or null.</summary>
+    public int? MidiUnpitched { get; set; }
 }
 
 /// <summary>MusicXML's &lt;transpose&gt;: the steps and semitones to add to the written pitch to get the sounding pitch.</summary>
@@ -176,6 +198,9 @@ public enum PartGroupSymbol
 public sealed class ScoreStaff
 {
     public ClefType Clef { get; set; } = ClefType.Treble;
+
+    /// <summary>Number of staff lines, 1–5. Fewer than five keeps the middle ones (a one-line staff has the middle line).</summary>
+    public int Lines { get; set; } = 5;
 }
 
 /// <summary>Stored in project files by name, so the numeric values may change freely.</summary>
@@ -187,6 +212,23 @@ public enum ClefType
     Tenor,
     /// <summary>Treble clef sounding an octave lower, used for tenor voices and guitar.</summary>
     Treble8vb,
+
+    /// <summary>Percussion clef: notes are placed as in the treble clef (docs/PERCUSSION.md).</summary>
+    Percussion,
+}
+
+/// <summary>The shape of a notehead other than the usual oval. Stored in project files by name.</summary>
+public enum NoteheadShape
+{
+    Normal,
+    X,
+    CircleX,
+    Diamond,
+    Triangle,
+    InvertedTriangle,
+    Square,
+    Slash,
+    Cross,
 }
 
 public sealed class ScoreMeasure
@@ -655,6 +697,17 @@ public sealed class ScoreEvent
     /// their real lengths and are written at twice that value, as usual for such tremolos.
     /// </summary>
     public int TremoloToNext { get; set; }
+
+    /// <summary>
+    /// A note without definite pitch (percussion). <see cref="NotationSpelling"/> is then only its place on the staff,
+    /// read as in the treble clef and without accidental (docs/PERCUSSION.md).
+    /// </summary>
+    public bool Unpitched { get; set; }
+
+    /// <summary>The <see cref="ScoreInstrument.Id"/> of the part's instrument this note plays; empty for none.</summary>
+    public string Instrument { get; set; } = "";
+
+    public NoteheadShape Notehead { get; set; }
 }
 
 /// <summary>A grace note: a small note without time of its own, before (or after) the note that carries it.</summary>

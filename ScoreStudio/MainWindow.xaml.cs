@@ -1185,6 +1185,7 @@ public partial class MainWindow : Window
             ClefType.Bass => "낮은음",
             ClefType.Alto => "알토",
             ClefType.Tenor => "테너",
+            ClefType.Percussion => "타악기",
             _ => staff.Clef.ToString(),
         }));
         return part.Staves.Count > 1 ? $"{part.Staves.Count}단({clefs})" : $"{clefs}자리표";

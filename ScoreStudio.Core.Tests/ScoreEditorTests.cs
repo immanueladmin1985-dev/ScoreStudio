@@ -433,6 +433,26 @@ public sealed class ScoreEditorTests : IDisposable
     }
 
     [Fact]
+    public void NotesOnAPercussionStaff_AreUnpitched_AndCannotBeTransposed()
+    {
+        var project = ScoreProject.CreateNew();
+        project.Parts[0].Staves[0].Clef = ClefType.Percussion;
+        project.Parts[0].Measures[0].KeyFifths = 2;
+        var editor = new ScoreEditor(project);
+
+        Assert.True(editor.EnterNoteAt(new EditPosition(0, 0, 1, 0, R(0)), 5 * 7 + 3).Done); // the place of F5
+        var note = project.Parts[0].Measures[0].Events.Single();
+        Assert.Equal((true, "F5"), (note.Unpitched, note.NotationSpelling)); // no sharp from the key
+
+        editor.Select(new EditPosition(0, 0, 1, 0, R(0)));
+        Assert.False(editor.Transpose(1).Done);
+        Assert.False(editor.Respell().Done);
+        Assert.True(editor.Step(-1).Done);
+        Assert.Equal((true, "E5"), (note.Unpitched, note.NotationSpelling));
+        Assert.Contains("타악기 음자리표", Enum.GetValues<ClefType>().Select(ScoreEditor.ClefName));
+    }
+
+    [Fact]
     public void EnteringAtAPointerTarget_UsesItsExactPitch_AndShiftAddsToTheChord()
     {
         var editor = NewEditor();

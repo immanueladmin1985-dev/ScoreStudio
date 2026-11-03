@@ -139,7 +139,7 @@ public static partial class Notation
     /// <summary>Diatonic number of the bottom staff line. Octave clefs use sounding pitch, as MusicXML does.</summary>
     public static int BottomLineDiatonic(ClefType clef) => clef switch
     {
-        ClefType.Treble => 4 * 7 + 2,    // E4
+        ClefType.Treble or ClefType.Percussion => 4 * 7 + 2, // E4: percussion positions read as in the treble clef
         ClefType.Treble8vb => 3 * 7 + 2, // E3
         ClefType.Bass => 2 * 7 + 4,      // G2
         ClefType.Alto => 3 * 7 + 3,      // F3
@@ -161,7 +161,8 @@ public static partial class Notation
     /// <summary>Staff positions of the key signature accidentals for a clef, in the order they are written.</summary>
     public static IReadOnlyList<int> KeySignaturePositions(int keyFifths, ClefType clef)
     {
-        var count = Math.Min(Math.Abs(keyFifths), 7);
+        // A percussion staff shows no key signature, as in Finale.
+        var count = clef == ClefType.Percussion ? 0 : Math.Min(Math.Abs(keyFifths), 7);
         var treble = keyFifths > 0 ? TrebleSharpPositions : TrebleFlatPositions;
         var shift = clef switch
         {

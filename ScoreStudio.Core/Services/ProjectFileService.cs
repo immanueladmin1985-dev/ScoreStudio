@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines).
+        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -229,7 +229,22 @@ public static class ProjectFileService
                     ?? throw Corrupt($"{p + 1}번째 파트의 {s + 1}번째 보표 데이터가 비어 있습니다.");
                 if (!Enum.IsDefined(staff.Clef))
                     throw Corrupt($"{p + 1}번째 파트의 {s + 1}번째 보표에 알 수 없는 음자리표가 있습니다.");
+                if (staff.Lines is < 1 or > 5)
+                    throw Corrupt($"{p + 1}번째 파트의 {s + 1}번째 보표의 줄 수({staff.Lines})가 올바르지 않습니다.");
             }
+
+            part.Instruments ??= new List<ScoreInstrument>();
+            foreach (var instrument in part.Instruments)
+            {
+                if (instrument is null || string.IsNullOrWhiteSpace(instrument.Id) || instrument.MidiChannel is < 1 or > 16
+                    || instrument.MidiProgram is < 1 or > 128 || instrument.MidiUnpitched is < 1 or > 128)
+                    throw Corrupt($"{p + 1}번째 파트의 악기 정보가 올바르지 않습니다.");
+                instrument.Name ??= "";
+            }
+
+            if (part.Instruments.Select(i => i.Id).Distinct().Count() != part.Instruments.Count)
+                throw Corrupt($"{p + 1}번째 파트의 악기 정보가 올바르지 않습니다.");
+            var instrumentIds = part.Instruments.Select(i => i.Id).ToHashSet();
 
             for (var m = 0; m < part.Measures.Count; m++)
             {
@@ -323,6 +338,9 @@ public static class ProjectFileService
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 아르페지오 정보가 올바르지 않습니다.");
                     if (item.Tremolo is < 0 or > 4 || item.TremoloToNext is < 0 or > 4)
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 트레몰로 정보가 올바르지 않습니다.");
+                    item.Instrument ??= "";
+                    if (!Enum.IsDefined(item.Notehead) || (item.Instrument.Length > 0 && !instrumentIds.Contains(item.Instrument)))
+                        throw Corrupt($"{where}의 {e + 1}번째 음표의 음표머리·악기 정보가 올바르지 않습니다.");
 
                     item.GraceNotes ??= new List<ScoreGraceNote>();
                     if (item.GraceNotes.Any(g => g is null || g.MidiPitch is < 0 or > 127 || !ScoreGraceNote.Types.Contains(g.Type ?? "")))

@@ -99,7 +99,13 @@ public static partial class ScoreLayoutEngine
     /// <summary>Room for a repeat sign (thick line, thin line, dots and a gap), in staff spaces.</summary>
     private const double RepeatSignWidth = 2.2;
 
-    private sealed record StaffSlot(int PartIndex, int StaffIndex, ClefType Clef, double Offset);
+    private sealed record StaffSlot(int PartIndex, int StaffIndex, ClefType Clef, double Offset, int Lines = 5);
+
+    /// <summary>
+    /// The staff lines drawn on a staff of <paramref name="lines"/> lines, counted down from the top line of a five-line
+    /// staff: fewer lines keep the middle ones, so a one-line staff has just the middle line (docs/PERCUSSION.md).
+    /// </summary>
+    private static (int First, int Last) DrawnLines(int lines) => ((6 - lines) / 2, (6 - lines) / 2 + lines - 1);
 
     /// <param name="Prefix">Room at the start of the measure for a key or time signature change, in mm.</param>
     /// <param name="Scale">Factor applied to the note spacing when the system is stretched to the margin.</param>
@@ -352,7 +358,7 @@ public static partial class ScoreLayoutEngine
                     offset += (4 + gap) * options.StaffSpace;
                 }
 
-                slots.Add(new StaffSlot(p, s, staves[s].Clef, offset));
+                slots.Add(new StaffSlot(p, s, staves[s].Clef, offset, staves[s].Lines));
                 firstOfPart = false;
             }
         }
@@ -674,7 +680,8 @@ public static partial class ScoreLayoutEngine
         // Staff lines and clefs.
         for (var i = 0; i < slots.Count; i++)
         {
-            for (var line = 0; line < 5; line++)
+            var (firstLine, lastLine) = DrawnLines(slots[i].Lines);
+            for (var line = firstLine; line <= lastLine; line++)
             {
                 var ly = staffTops[i] + line * sp;
                 items.Add(new LineItem(left, ly, right, ly, Smufl.StaffLineThickness * sp));
@@ -685,7 +692,8 @@ public static partial class ScoreLayoutEngine
 
         // A line joins all staves at the start of the system.
         if (slots.Count > 1)
-            items.Add(new LineItem(left, staffTops[0], left, bottom, Smufl.ThinBarlineThickness * sp));
+            items.Add(new LineItem(left, staffTops[0] + DrawnLines(slots[0].Lines).First * sp, left,
+                staffTops[^1] + DrawnLines(slots[^1].Lines).Last * sp, Smufl.ThinBarlineThickness * sp));
 
         // Braces for multi-staff parts, then group brackets further out, then part names on the first system.
         var symbolLeft = new Dictionary<int, double>();
@@ -911,7 +919,7 @@ public static partial class ScoreLayoutEngine
                 var restX = chord.IsMeasureRest
                     ? (contentLeft + measureRight - Smufl.RestWidth(NoteType.Whole) * sp) / 2
                     : onsetX[chord.Start];
-                var (restTop, restBottom) = DrawRest(items, chord, restX, staffTop, sp);
+                var (restTop, restBottom) = DrawRest(items, chord, restX, staffTop, sp, slots[slotIndex].Lines == 1);
                 DrawGraces(items, chord, restX, (chord.LeftExtent - chord.GraceRoomBefore) * sp, restX + Smufl.RestWidth(chord.IsMeasureRest ? NoteType.Whole : chord.Value.Type) * sp, staffTop, sp);
                 rests.Add(new PlacedRest(slotIndex, measureIndex, chord.Start, chord.Voice, chord, restX, restTop, restBottom));
                 var restType = chord.IsMeasureRest ? NoteType.Whole : chord.Value.Type;
@@ -921,7 +929,7 @@ public static partial class ScoreLayoutEngine
             else
             {
                 var chordX = onsetX[chord.Start] + chord.XOffset * sp;
-                var (top, bottom) = DrawChord(items, chord, chordX, staffTop, sp);
+                var (top, bottom) = DrawChord(items, chord, chordX, staffTop, sp, slots[slotIndex].Lines == 5);
                 DrawArpeggio(items, chord, chordX, staffTop, sp);
                 DrawGraces(items, chord, chordX, (chord.LeftExtent - chord.GraceRoomBefore) * sp,
                     chordX + (Smufl.NoteheadWidth(chord.Value.Type) * (chord.Notes.Any(n => n.Side > 0) ? 2 : 1) + (chord.Value.Dots > 0 ? 0.35 + chord.Value.Dots * 0.6 : 0)) * sp,
@@ -1177,12 +1185,13 @@ public static partial class ScoreLayoutEngine
     }
 
     /// <summary>Draws a rest (and its dots); returns the top and bottom of the rest glyph.</summary>
-    private static (double Top, double Bottom) DrawRest(List<DrawItem> items, PreparedChord rest, double x, double staffTop, double sp)
+    private static (double Top, double Bottom) DrawRest(List<DrawItem> items, PreparedChord rest, double x, double staffTop, double sp, bool oneLine = false)
     {
         var type = rest.IsMeasureRest ? NoteType.Whole : rest.Value.Type;
 
-        // Whole rests hang from the fourth line, the others sit on the middle line. With two voices they move apart.
-        var y = type <= NoteType.Whole ? staffTop + sp : staffTop + 2 * sp;
+        // Whole rests hang from the fourth line (on a one-line staff, from its line), the others sit on the middle line.
+        // With two voices they move apart.
+        var y = type <= NoteType.Whole && !oneLine ? staffTop + sp : staffTop + 2 * sp;
         y -= rest.RestShift * sp / 2;
         items.Add(new GlyphItem(Smufl.Rest(type), x, y, 4 * sp));
 
@@ -1197,7 +1206,7 @@ public static partial class ScoreLayoutEngine
     }
 
     /// <summary>Draws a chord's heads, accidentals, dots, leger lines and (unless beamed) stem and flag; returns its top and bottom.</summary>
-    private static (double Top, double Bottom) DrawChord(List<DrawItem> items, PreparedChord chord, double x, double staffTop, double sp)
+    private static (double Top, double Bottom) DrawChord(List<DrawItem> items, PreparedChord chord, double x, double staffTop, double sp, bool legerLines = true)
     {
         var type = chord.Value.Type;
         var headWidth = Smufl.NoteheadWidth(type) * sp;
@@ -1210,9 +1219,10 @@ public static partial class ScoreLayoutEngine
         // Leger lines above and below the staff, wide enough for heads on both sides of the stem.
         var legerLeft = x - (hasLeft ? headWidth : 0) - Smufl.LegerLineExtension * sp;
         var legerRight = x + headWidth + (hasRight ? headWidth : 0) + Smufl.LegerLineExtension * sp;
-        for (var p = -2; p >= low; p -= 2)
+        // A staff of fewer lines (a one-line percussion staff) has no leger lines.
+        for (var p = -2; legerLines && p >= low; p -= 2)
             items.Add(new LineItem(legerLeft, StaffY(staffTop, p, sp), legerRight, StaffY(staffTop, p, sp), Smufl.LegerLineThickness * sp));
-        for (var p = 10; p <= high; p += 2)
+        for (var p = 10; legerLines && p <= high; p += 2)
             items.Add(new LineItem(legerLeft, StaffY(staffTop, p, sp), legerRight, StaffY(staffTop, p, sp), Smufl.LegerLineThickness * sp));
 
         var headLeftEdge = x - (hasLeft ? headWidth : 0);
@@ -1221,7 +1231,9 @@ public static partial class ScoreLayoutEngine
         foreach (var note in notes)
         {
             var y = StaffY(staffTop, note.Position, sp);
-            items.Add(new GlyphItem(Smufl.Notehead(type), x + note.Side * headWidth, y, 4 * sp));
+            // A shaped head (x, diamond, …) is centred where the oval would be, so stems and spacing stay the same.
+            var glyphWidth = Smufl.NoteheadWidth(type, note.Head) * sp;
+            items.Add(new GlyphItem(Smufl.Notehead(type, note.Head), x + note.Side * headWidth + (headWidth - glyphWidth) / 2, y, 4 * sp));
 
             if (note.Accidental is { } alter)
             {
@@ -1382,8 +1394,11 @@ public static partial class ScoreLayoutEngine
         var repeat = kind & (BarlineKind.EndRepeat | BarlineKind.StartRepeat);
         foreach (var run in runs)
         {
-            var y1 = top + run[0].Offset;
-            var y2 = top + run[^1].Offset + 4 * sp;
+            // A staff of fewer lines takes the barline only over its lines; a one-line staff a space above and below.
+            var (firstOfTop, _) = DrawnLines(run[0].Lines);
+            var (_, lastOfBottom) = DrawnLines(run[^1].Lines);
+            var y1 = top + run[0].Offset + (firstOfTop - (run[0].Lines == 1 ? 1 : 0)) * sp;
+            var y2 = top + run[^1].Offset + (lastOfBottom + (run[^1].Lines == 1 ? 1 : 0)) * sp;
             void Line(double centre, double width) => items.Add(new LineItem(centre, y1, centre, y2, width));
 
             if (repeat == 0)

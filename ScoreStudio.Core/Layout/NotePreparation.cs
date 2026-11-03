@@ -10,7 +10,7 @@ namespace ScoreStudio.Layout;
 /// <param name="AccidentalColumn">0 for the column next to the noteheads, 1 for the next one to the left, …</param>
 /// <param name="Midi">Sounding pitch, used to find the note a tie goes to.</param>
 /// <param name="TieToNext">A tie runs from this note to the next note of the same pitch.</param>
-internal sealed record PreparedNote(int Position, int? Accidental, int Side, int AccidentalColumn, int Midi, bool TieToNext);
+internal sealed record PreparedNote(int Position, int? Accidental, int Side, int AccidentalColumn, int Midi, bool TieToNext, NoteheadShape Head = NoteheadShape.Normal);
 
 /// <summary>A grace note ready to draw (docs/GRACE_NOTES.md).</summary>
 /// <param name="Position">Staff position in half spaces, as for <see cref="PreparedNote"/>.</param>
@@ -235,7 +235,7 @@ internal static class NotePreparation
         public required ScoreEvent First { get; init; }
         public required NoteValue Value { get; init; }
         public required int Role { get; init; }
-        public required List<(int Position, int? Accidental, int Midi, bool Tie)> Notes { get; init; }
+        public required List<(int Position, int? Accidental, int Midi, bool Tie, NoteheadShape Head)> Notes { get; init; }
         public required IReadOnlyList<ScoreLyric> Lyrics { get; init; }
         public required IReadOnlyList<int> ExtendEnds { get; init; }
         public required IReadOnlyList<Articulation> Articulations { get; init; }
@@ -304,7 +304,7 @@ internal static class NotePreparation
                     continue;
                 }
 
-                var notes = new List<(int Position, int? Accidental, int Midi, bool Tie)>();
+                var notes = new List<(int Position, int? Accidental, int Midi, bool Tie, NoteheadShape Head)>();
                 foreach (var note in chordEvents.Where(e => e.Kind == "Note").OrderBy(e => e.MidiPitch))
                 {
                     // Under an octave line the note is written one or two octaves away from its sounding pitch.
@@ -315,7 +315,11 @@ internal static class NotePreparation
                     var tieKey = (partIndex, staff, note.Voice, note.MidiPitch);
 
                     int? accidental = null;
-                    if (tiedFromPrevious.Contains(tieKey))
+                    if (note.Unpitched)
+                    {
+                        // An unpitched note's spelling is only a place on the staff: it never shows an accidental.
+                    }
+                    else if (tiedFromPrevious.Contains(tieKey))
                     {
                         // A note tied over from before shows no accidental; later notes in the measure still need one.
                     }
@@ -327,7 +331,7 @@ internal static class NotePreparation
 
                     if (note.TieToNext) tiedFromPrevious.Add(tieKey);
                     else tiedFromPrevious.Remove(tieKey);
-                    notes.Add((position, accidental, note.MidiPitch, note.TieToNext));
+                    notes.Add((position, accidental, note.MidiPitch, note.TieToNext, note.Notehead));
                 }
 
                 if (notes.Count == 0)
@@ -546,7 +550,7 @@ internal static class NotePreparation
 
     private static PreparedChord BuildChord(
         int partIndex, int staff, int voice, Rational start, Rational duration, NoteValue value, bool stemUp, int role,
-        List<(int Position, int? Accidental, int Midi, bool Tie)> notes, int octaveShift, IReadOnlyList<BeamType> beams,
+        List<(int Position, int? Accidental, int Midi, bool Tie, NoteheadShape Head)> notes, int octaveShift, IReadOnlyList<BeamType> beams,
         IReadOnlyList<ScoreLyric> lyrics, IReadOnlyList<int> extendEnds, IReadOnlyList<Articulation> articulations,
         IReadOnlyList<PreparedGrace> graces, ArpeggioKind arpeggio)
     {
@@ -590,7 +594,7 @@ internal static class NotePreparation
             PartIndex = partIndex, Staff = staff, Voice = voice, Start = start, Duration = duration, Value = value, IsRest = false,
             StemUp = stemUp, VoiceRole = role, OctaveShift = octaveShift, Beams = beams, Lyrics = lyrics, ExtendEnds = extendEnds,
             Articulations = articulations, Graces = graces, GraceRoomBefore = GraceRoom(graces, after: false), Arpeggio = arpeggio,
-            Notes = sorted.Select((n, i) => new PreparedNote(n.Position, n.Accidental, sides[i], columns[i], n.Midi, n.Tie)).ToList(),
+            Notes = sorted.Select((n, i) => new PreparedNote(n.Position, n.Accidental, sides[i], columns[i], n.Midi, n.Tie, n.Head)).ToList(),
             LeftExtent = displacedLeft + accidentalRoom + GraceRoom(graces, after: false) + (arpeggio == ArpeggioKind.None ? 0 : ArpeggioRoom),
             RightExtent = headWidth + displacedRight + Math.Max(DotsWidth(value), flagRoom) + GraceRoom(graces, after: true),
         };

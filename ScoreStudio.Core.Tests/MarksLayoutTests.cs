@@ -264,4 +264,41 @@ public sealed class MarksLayoutTests
         Assert.Single(hookLines, l => l.Y1 < systems[0].Staves[0].Top);
         Assert.Single(hookLines, l => l.Y1 > systems[0].Staves[0].Top + 4 * Sp && l.Y1 < systems[1].Staves[0].Top);
     }
+
+    [Fact]
+    public void PercussionStaff_HasItsClef_NoKeySignature_NoAccidentals_AndShapedHeads()
+    {
+        var project = Score(1,
+            new ScoreEvent { Unpitched = true, NotationSpelling = "G5", MidiPitch = 42, DurationNumerator = 2, Notehead = NoteheadShape.X },
+            new ScoreEvent { Unpitched = true, NotationSpelling = "F4", MidiPitch = 35, PositionNumerator = 2, DurationNumerator = 2 });
+        project.Parts[0].Staves[0].Clef = ClefType.Percussion;
+        project.Parts[0].Measures[0].KeyFifths = 3;
+        var (page, top) = Layout(project);
+
+        var clef = Glyph(page, Smufl.PercussionClef);
+        Assert.Equal(top + 2 * Sp, clef.Y, 6);
+        Assert.DoesNotContain(page.Items.OfType<GlyphItem>(), g => g.Glyph is Smufl.AccidentalSharp or Smufl.AccidentalNatural or Smufl.AccidentalFlat);
+        var x = Glyph(page, Smufl.Notehead(NoteType.Half, NoteheadShape.X));
+        Assert.Equal(top - 0.5 * Sp, x.Y, 6); // G5 in the space above the staff, as in the treble clef
+        Assert.Single(page.Items.OfType<GlyphItem>(), g => g.Glyph == Smufl.NoteheadHalf);
+    }
+
+    [Fact]
+    public void OneLineStaff_DrawsOneLine_ShortBarlines_AndNoLegerLines()
+    {
+        var project = Score(1,
+            new ScoreEvent { Unpitched = true, NotationSpelling = "B4", MidiPitch = 71, DurationNumerator = 2, Notehead = NoteheadShape.Triangle },
+            new ScoreEvent { Unpitched = true, NotationSpelling = "A5", MidiPitch = 81, PositionNumerator = 2, DurationNumerator = 2 });
+        project.Parts[0].Staves[0] = new ScoreStaff { Clef = ClefType.Percussion, Lines = 1 };
+        var (page, top) = Layout(project);
+
+        var level = page.Items.OfType<LineItem>().Where(l => l.Y1 == l.Y2).ToList();
+        var staffLine = Assert.Single(level, l => l.X2 - l.X1 > 10 * Sp);
+        Assert.Equal(top + 2 * Sp, staffLine.Y1, 6);
+        Assert.DoesNotContain(level, l => l.X2 - l.X1 < 5 * Sp); // no leger line for the A5 above
+        var barlines = page.Items.OfType<LineItem>().Where(l => l.X1 == l.X2 && l.Y1 != l.Y2 && l.Thickness >= Smufl.ThinBarlineThickness * Sp - 1e-9).ToList(); // not the stems
+        Assert.NotEmpty(barlines);
+        Assert.All(barlines, b => Assert.Equal((top + Sp, top + 3 * Sp), (Math.Min(b.Y1, b.Y2), Math.Max(b.Y1, b.Y2))));
+        Glyph(page, Smufl.Notehead(NoteType.Half, NoteheadShape.Triangle));
+    }
 }

@@ -150,7 +150,7 @@ public static class MusicXmlImporter
             .Where(p => (string?)p.Attribute("id") is not null)
             .ToDictionary(p => (string)p.Attribute("id")!, p => p) ?? new Dictionary<string, XElement>();
 
-        var parts = new List<(XElement Part, string Name, string Instrument)>();
+        var parts = new List<(XElement Part, string Name, string Instrument, List<ScoreInstrument> Instruments)>();
         foreach (var partElement in root.Elements("part"))
         {
             var id = (string?)partElement.Attribute("id") ?? "";
@@ -159,16 +159,16 @@ public static class MusicXmlImporter
 
             var name = PartName(scorePart) ?? $"파트 {parts.Count + 1}";
             var instrument = FirstText(scorePart.Element("score-instrument")?.Element("instrument-name")) ?? name;
-            parts.Add((partElement, name, instrument));
+            parts.Add((partElement, name, instrument, ReadInstruments(scorePart)));
         }
 
         var partIds = new List<string>();
         for (var i = 0; i < parts.Count; i++)
         {
             // Warning locations must say which part they mean, even when several parts share a name.
-            var (partElement, name, instrument) = parts[i];
+            var (partElement, name, instrument, instruments) = parts[i];
             var label = parts.Count(p => p.Name == name) > 1 ? $"{i + 1}번째 파트({name})" : name;
-            var part = new PartReader(name, label, instrument, warnings).Read(partElement);
+            var part = new PartReader(name, label, instrument, instruments, warnings).Read(partElement);
             var id = (string)partElement.Attribute("id")!;
             part.ShowName = ShowsName(root.Element("part-list")!.Elements("score-part").First(p => (string?)p.Attribute("id") == id));
             project.Parts.Add(part);
@@ -185,6 +185,35 @@ public static class MusicXmlImporter
             throw new ProjectFileException("MusicXML 파일에 가져올 파트가 없습니다.");
 
         return new ImportResult { Project = project, Warnings = warnings.ToList(), Summary = ImportSummary.Of(project) };
+    }
+
+    /// <summary>
+    /// A part's &lt;score-instrument&gt;s with their &lt;midi-instrument&gt; settings (docs/PERCUSSION.md). Out-of-range
+    /// MIDI values are left out. Each keeps its source id here; <see cref="PartReader"/> numbers them I1, I2, … in order,
+    /// so that a score exported and imported again keeps the same ids.
+    /// </summary>
+    private static List<ScoreInstrument> ReadInstruments(XElement scorePart)
+    {
+        static int? Number(XElement? element, int max) =>
+            int.TryParse(element?.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n >= 1 && n <= max ? n : null;
+
+        var midi = scorePart.Elements("midi-instrument").Where(m => (string?)m.Attribute("id") is not null)
+            .GroupBy(m => (string)m.Attribute("id")!).ToDictionary(g => g.Key, g => g.First());
+        var instruments = new List<ScoreInstrument>();
+        foreach (var element in scorePart.Elements("score-instrument"))
+        {
+            var id = ((string?)element.Attribute("id"))?.Trim();
+            if (string.IsNullOrEmpty(id) || instruments.Any(i => i.Id == id)) continue;
+            var settings = midi.GetValueOrDefault(id);
+            instruments.Add(new ScoreInstrument
+            {
+                Id = id, Name = FirstText(element.Element("instrument-name")) ?? "",
+                MidiChannel = Number(settings?.Element("midi-channel"), 16), MidiProgram = Number(settings?.Element("midi-program"), 128),
+                MidiUnpitched = Number(settings?.Element("midi-unpitched"), 128),
+            });
+        }
+
+        return instruments;
     }
 
     /// <summary>Finale names unnamed staves "MusicXML Part"; that is a placeholder, not a name.</summary>
@@ -426,11 +455,26 @@ public static class MusicXmlImporter
         /// <summary>Numbers of slurs started on grace notes (grace slurs are not kept), so their stops are not warned about.</summary>
         private readonly HashSet<string> _graceSlurs = new();
 
-        public PartReader(string name, string label, string instrument, ImportWarningCollector warnings)
+        /// <summary>The part's instruments, kept only for a drum set or unpitched sounds (docs/PERCUSSION.md).</summary>
+        private readonly List<ScoreInstrument> _instruments;
+
+        /// <summary>Source instrument ids and the ids they are kept under.</summary>
+        private readonly Dictionary<string, string> _instrumentIds = new();
+
+        /// <summary>Staff lines per staff (1-based), from the first staff-lines given for it.</summary>
+        private readonly Dictionary<int, int> _staffLines = new();
+
+        public PartReader(string name, string label, string instrument, List<ScoreInstrument> instruments, ImportWarningCollector warnings)
         {
             _name = name;
             _label = label;
             _instrument = instrument;
+            _instruments = instruments.Count > 1 || instruments.Any(i => i.MidiUnpitched is not null) ? instruments : new List<ScoreInstrument>();
+            for (var i = 0; i < _instruments.Count; i++)
+            {
+                _instrumentIds[_instruments[i].Id] = $"I{i + 1}";
+                _instruments[i].Id = $"I{i + 1}";
+            }
             _warnings = warnings;
         }
 
@@ -476,11 +520,18 @@ public static class MusicXmlImporter
             }
 
             var staves = Enumerable.Range(1, _staves)
-                .Select(n => new ScoreStaff { Clef = _clefs.TryGetValue(n, out var clef) ? clef : n == 2 ? ClefType.Bass : ClefType.Treble })
+                .Select(n => new ScoreStaff
+                {
+                    Clef = _clefs.TryGetValue(n, out var clef) ? clef : n == 2 ? ClefType.Bass : ClefType.Treble,
+                    Lines = _staffLines.GetValueOrDefault(n, 5),
+                })
                 .ToList();
 
             // Events on staves that were declared later than they were used are clamped in ReadNote.
-            return new ScorePart { Name = _name, Instrument = _instrument, Staves = staves, Measures = measures, Transpose = _transpose };
+            return new ScorePart
+            {
+                Name = _name, Instrument = _instrument, Staves = staves, Measures = measures, Transpose = _transpose, Instruments = _instruments,
+            };
         }
 
         private void Warn(string message) => _warnings.Add(message, _location);
@@ -606,6 +657,9 @@ public static class MusicXmlImporter
             foreach (var clef in attributes.Elements("clef"))
                 ReadClef(clef, measure, cursor);
 
+            foreach (var details in attributes.Elements("staff-details").Where(d => d.Element("staff-lines") is not null))
+                ReadStaffLines(details);
+
             // Hidden staves (Finale's "hide empty staves"): print-object="no" hides from here on, "yes" shows again.
             foreach (var details in attributes.Elements("staff-details"))
             {
@@ -696,6 +750,26 @@ public static class MusicXmlImporter
             _denominator = measure.Denominator = denominator;
         }
 
+        /// <summary>A staff's number of lines (docs/PERCUSSION.md): the first one given is kept for the whole piece.</summary>
+        private void ReadStaffLines(XElement details)
+        {
+            var staff = int.TryParse((string?)details.Attribute("number"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? number : 1;
+            if (!int.TryParse(details.Element("staff-lines")!.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var lines)
+                || lines is < 1 or > 5 || staff is < 1 or > 4)
+            {
+                Warn("지원하지 않는 보표 줄 수(6줄 이상 등)는 5줄로 표시함");
+                return;
+            }
+
+            if (_staffLines.TryGetValue(staff, out var known))
+            {
+                if (known != lines) Warn("곡 중간에 바뀌는 보표 줄 수는 처음 것만 가져옴");
+                return;
+            }
+
+            _staffLines[staff] = lines;
+        }
+
         private void ReadClef(XElement clef, ScoreMeasure measure, Rational cursor)
         {
             var staff = 1;
@@ -719,6 +793,7 @@ public static class MusicXmlImporter
                 ("F", 4, 0) => ClefType.Bass,
                 ("C", 3, 0) => ClefType.Alto,
                 ("C", 4, 0) => ClefType.Tenor,
+                ("PERCUSSION", _, 0) => ClefType.Percussion,
                 _ => null,
             };
 
@@ -861,12 +936,6 @@ public static class MusicXmlImporter
                 return;
             }
 
-            if (note.Element("unpitched") is not null)
-            {
-                Warn("타악기 음표(unpitched)");
-                return;
-            }
-
             // A chord's other notes often leave out their voice and staff: they are the first note's.
             var item = new ScoreEvent
             {
@@ -879,9 +948,27 @@ public static class MusicXmlImporter
             {
                 item.Kind = "Rest";
             }
+            else if (note.Element("unpitched") is { } unpitched)
+            {
+                if (!ReadUnpitched(unpitched, note, item))
+                {
+                    Warn("위치를 읽을 수 없는 타악기 음표는 가져오지 않음");
+                    return;
+                }
+            }
             else if (note.Element("pitch") is { } pitch && ReadPitch(pitch, item))
             {
                 item.Kind = "Note";
+                if (_currentClefs.GetValueOrDefault(item.Staff + 1) == ClefType.Percussion)
+                {
+                    // denigma (and some other programs) write percussion notes with pitches: the pitch is all there is
+                    // to place them by, which may not be where the source shows them.
+                    item.Unpitched = true;
+                    item.NotationSpelling = item.NotationSpelling!.Replace("#", "").Replace("b", "");
+                    Warn("타악기 음자리표 보표의 음표가 음높이로 적혀 있어 위치가 원본과 다를 수 있음");
+                }
+
+                ReadInstrumentAndNotehead(note, item);
             }
             else
             {
@@ -990,6 +1077,67 @@ public static class MusicXmlImporter
             int.TryParse(note.Element("voice")?.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var voice) && voice >= 1
                 ? voice
                 : 1;
+
+        /// <summary>
+        /// An unpitched note (docs/PERCUSSION.md): its display step and octave are its place on the staff (as in the treble
+        /// clef); without them it sits on the middle line. It sounds its instrument's MIDI key when there is one.
+        /// </summary>
+        private bool ReadUnpitched(XElement unpitched, XElement note, ScoreEvent item)
+        {
+            var step = unpitched.Element("display-step")?.Value.Trim().ToUpperInvariant() ?? "B";
+            var octaveText = unpitched.Element("display-octave")?.Value.Trim() ?? "4";
+            var semitone = step switch { "C" => 0, "D" => 2, "E" => 4, "F" => 5, "G" => 7, "A" => 9, "B" => 11, _ => -1 };
+            if (semitone < 0 || !int.TryParse(octaveText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var octave) || octave is < 0 or > 9)
+                return false;
+
+            item.Kind = "Note";
+            item.Unpitched = true;
+            item.NotationSpelling = step + octave.ToString(CultureInfo.InvariantCulture);
+            item.MidiPitch = Math.Clamp((octave + 1) * 12 + semitone, 0, 127);
+            ReadInstrumentAndNotehead(note, item);
+            if (_instruments.FirstOrDefault(i => i.Id == item.Instrument)?.MidiUnpitched is { } key) item.MidiPitch = key - 1;
+            return true;
+        }
+
+        private static readonly Dictionary<string, NoteheadShape> NoteheadNames = new()
+        {
+            ["normal"] = NoteheadShape.Normal,
+            ["x"] = NoteheadShape.X,
+            ["circle-x"] = NoteheadShape.CircleX,
+            ["diamond"] = NoteheadShape.Diamond,
+            ["triangle"] = NoteheadShape.Triangle,
+            ["inverted triangle"] = NoteheadShape.InvertedTriangle,
+            ["square"] = NoteheadShape.Square,
+            ["rectangle"] = NoteheadShape.Square,
+            ["slash"] = NoteheadShape.Slash,
+            ["cross"] = NoteheadShape.Cross,
+        };
+
+        /// <summary>SMuFL names that Finale writes with notehead "other".</summary>
+        private static readonly (string Prefix, NoteheadShape Shape)[] SmuflNoteheads =
+        {
+            ("noteheadXOrnate", NoteheadShape.X), ("noteheadCircleX", NoteheadShape.CircleX), ("noteheadX", NoteheadShape.X),
+            ("noteheadDiamond", NoteheadShape.Diamond), ("noteheadTriangleUp", NoteheadShape.Triangle),
+            ("noteheadTriangleDown", NoteheadShape.InvertedTriangle), ("noteheadSquare", NoteheadShape.Square),
+            ("noteheadSlash", NoteheadShape.Slash), ("noteheadPlus", NoteheadShape.Cross),
+        };
+
+        /// <summary>The note's instrument (when the part keeps a list of them) and notehead shape.</summary>
+        private void ReadInstrumentAndNotehead(XElement note, ScoreEvent item)
+        {
+            var instrument = ((string?)note.Element("instrument")?.Attribute("id"))?.Trim() ?? "";
+            if (_instrumentIds.TryGetValue(instrument, out var id)) item.Instrument = id;
+
+            if (note.Element("notehead") is not { } notehead) return;
+            var value = notehead.Value.Trim();
+            var smufl = ((string?)notehead.Attribute("smufl"))?.Trim() ?? "";
+            if (NoteheadNames.TryGetValue(value, out var shape))
+                item.Notehead = shape;
+            else if (SmuflNoteheads.FirstOrDefault(s => smufl.StartsWith(s.Prefix, StringComparison.Ordinal)) is { Prefix: not null } match)
+                item.Notehead = match.Shape;
+            else if (!(value == "other" && smufl is "noteheadBlack" or "noteheadHalf" or "noteheadWhole"))
+                Warn($"음표머리 모양 <{(value == "other" && smufl.Length > 0 ? smufl : value)}>은(는) 보통 머리로 표시함");
+        }
 
         private bool ReadPitch(XElement pitch, ScoreEvent item)
         {

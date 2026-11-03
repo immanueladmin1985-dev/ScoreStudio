@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- ScoreStudio sample: a drum set on a five-line percussion staff and a one-line percussion staff, as Finale writes them (docs/PERCUSSION.md). -->
+<score-partwise version="4.0">
+  <work><work-title>타악기</work-title></work>
+  <part-list>
+    <score-part id="P1">
+      <part-name>드럼 세트</part-name>
+      <score-instrument id="P1-I36"><instrument-name>Bass Drum 1</instrument-name></score-instrument>
+      <score-instrument id="P1-I39"><instrument-name>Acoustic Snare</instrument-name></score-instrument>
+      <score-instrument id="P1-I43"><instrument-name>Closed Hi-Hat</instrument-name></score-instrument>
+      <score-instrument id="P1-I50"><instrument-name>Crash Cymbal 1</instrument-name></score-instrument>
+      <score-instrument id="P1-I48"><instrument-name>High Floor Tom</instrument-name></score-instrument>
+      <midi-instrument id="P1-I36"><midi-channel>10</midi-channel><midi-unpitched>36</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I39"><midi-channel>10</midi-channel><midi-unpitched>39</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I43"><midi-channel>10</midi-channel><midi-unpitched>43</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I50"><midi-channel>10</midi-channel><midi-unpitched>50</midi-unpitched></midi-instrument>
+      <midi-instrument id="P1-I48"><midi-channel>10</midi-channel><midi-unpitched>44</midi-unpitched></midi-instrument>
+    </score-part>
+    <score-part id="P2">
+      <part-name>트라이앵글·우드블록</part-name>
+      <score-instrument id="P2-I82"><instrument-name>Triangle</instrument-name></score-instrument>
+      <score-instrument id="P2-I77"><instrument-name>Wood Block</instrument-name></score-instrument>
+      <midi-instrument id="P2-I82"><midi-channel>10</midi-channel><midi-unpitched>82</midi-unpitched></midi-instrument>
+      <midi-instrument id="P2-I77"><midi-channel>10</midi-channel><midi-unpitched>77</midi-unpitched></midi-instrument>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>2</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>percussion</sign></clef>
+      </attributes>
+      <note><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I43"/><voice>1</voice><type>eighth</type><stem>up</stem><notehead>x</notehead><beam number="1">begin</beam></note>
+      <note><chord/><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>1</duration><instrument id="P1-I36"/><voice>1</voice><type>eighth</type><stem>up</stem></note>
+      <note><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I43"/><voice>1</voice><type>eighth</type><stem>up</stem><notehead>x</notehead><beam number="1">end</beam></note>
+      <note><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I43"/><voice>1</voice><type>eighth</type><stem>up</stem><notehead>x</notehead><beam number="1">begin</beam></note>
+      <note><chord/><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I39"/><voice>1</voice><type>eighth</type><stem>up</stem></note>
+      <note><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>1</duration><instrument id="P1-I43"/><voice>1</voice><type>eighth</type><stem>up</stem><notehead>x</notehead><beam number="1">end</beam></note>
+      <note><unpitched><display-step>A</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id="P1-I50"/><voice>1</voice><type>quarter</type><stem>up</stem><notehead>circle-x</notehead></note>
+      <note><chord/><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I36"/><voice>1</voice><type>quarter</type><stem>up</stem></note>
+      <note><unpitched><display-step>A</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id="P1-I48"/><voice>1</voice><type>quarter</type><stem>up</stem></note>
+    </measure>
+    <measure number="2">
+      <note><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>4</duration><instrument id="P1-I39"/><voice>1</voice><type>half</type><stem>up</stem><notehead>diamond</notehead></note>
+      <note><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>4</duration><instrument id="P1-I36"/><voice>1</voice><type>half</type><stem>up</stem></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>2</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>percussion</sign></clef>
+        <staff-details><staff-lines>1</staff-lines></staff-details>
+      </attributes>
+      <note><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>4</duration><instrument id="P2-I82"/><voice>1</voice><type>half</type><stem>up</stem><notehead>triangle</notehead></note>
+      <note><unpitched/><duration>2</duration><instrument id="P2-I77"/><voice>1</voice><type>quarter</type><stem>up</stem></note>
+      <note><rest/><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <measure number="2">
+      <note><unpitched><display-step>B</display-step><display-octave>4</display-octave></unpitched><duration>8</duration><instrument id="P2-I82"/><voice>1</voice><type>whole</type><notehead>triangle</notehead></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

@@ -188,6 +188,58 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void PercussionStaves_UnpitchedNotes_Noteheads_AndInstruments_AreKept()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("percussion.musicxml"));
+        Assert.Empty(result.Warnings);
+        var (drums, triangle) = (result.Project.Parts[0], result.Project.Parts[1]);
+
+        Assert.Equal((ClefType.Percussion, 5), (drums.Staves[0].Clef, drums.Staves[0].Lines));
+        Assert.Equal((ClefType.Percussion, 1), (triangle.Staves[0].Clef, triangle.Staves[0].Lines));
+
+        // Instruments are numbered in order; a note sounds its instrument's MIDI key (MusicXML counts from 1).
+        Assert.Equal(new[] { ("I1", "Bass Drum 1", 36), ("I2", "Acoustic Snare", 39), ("I3", "Closed Hi-Hat", 43), ("I4", "Crash Cymbal 1", 50), ("I5", "High Floor Tom", 44) },
+            drums.Instruments.Select(i => (i.Id, i.Name, i.MidiUnpitched ?? 0)));
+        Assert.All(drums.Instruments, i => Assert.Equal(10, i.MidiChannel));
+
+        var notes = drums.Measures[0].Events;
+        Assert.All(notes, e => Assert.True(e.Unpitched));
+        Assert.Equal(new[] { "G5 I3 X 42", "F4 I1 Normal 35", "G5 I3 X 42", "G5 I3 X 42", "C5 I2 Normal 38", "G5 I3 X 42", "A5 I4 CircleX 49", "F4 I1 Normal 35", "A4 I5 Normal 43" },
+            notes.Select(e => $"{e.NotationSpelling} {e.Instrument} {e.Notehead} {e.MidiPitch}"));
+        Assert.Equal(NoteheadShape.Diamond, drums.Measures[1].Events[0].Notehead);
+
+        // On the one-line staff a note without a place sits on the middle line.
+        Assert.Equal(new[] { "B4 I1 Triangle", "B4 I2 Normal" },
+            triangle.Measures[0].Events.Where(e => e.Kind == "Note").Select(e => $"{e.NotationSpelling} {e.Instrument} {e.Notehead}"));
+    }
+
+    [Fact]
+    public void PitchedNotesInAPercussionClef_AreKeptAsUnpitched_WithAWarning()
+    {
+        // As denigma writes a Finale drum staff: pitches that are not the places the source shows.
+        var xml = OneMeasure("<clef><sign>percussion</sign><line>3</line></clef>", "").Replace("<step>D</step>", "<step>D</step><alter>1</alter>")
+            .Replace("<type>whole</type>", "<type>whole</type><notehead smufl=\"noteheadTriangleUpBlack\">other</notehead>");
+        var result = MusicXmlImporter.ImportXml(xml, "드럼");
+
+        var note = Assert.Single(result.Project.Parts[0].Measures[0].Events);
+        Assert.Equal((true, "D5", NoteheadShape.Triangle), (note.Unpitched, note.NotationSpelling, note.Notehead));
+        Assert.Equal("타악기 음자리표 보표의 음표가 음높이로 적혀 있어 위치가 원본과 다를 수 있음", Assert.Single(result.Warnings).Message);
+    }
+
+    [Fact]
+    public void UnknownNoteheadShapes_AndUnsupportedStaffLines_AreWarned()
+    {
+        var xml = OneMeasure("<staff-details><staff-lines>6</staff-lines></staff-details>", "")
+            .Replace("<type>whole</type>", "<type>whole</type><notehead>do</notehead>");
+        var result = MusicXmlImporter.ImportXml(xml, "모양");
+
+        Assert.Equal(5, result.Project.Parts[0].Staves[0].Lines);
+        Assert.Equal(NoteheadShape.Normal, result.Project.Parts[0].Measures[0].Events[0].Notehead);
+        Assert.Equal(new[] { "음표머리 모양 <do>은(는) 보통 머리로 표시함", "지원하지 않는 보표 줄 수(6줄 이상 등)는 5줄로 표시함" },
+            result.Warnings.Select(w => w.Message).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -898,6 +950,7 @@ public sealed class MusicXmlImporterTests : IDisposable
     [InlineData("part-groups.musicxml")]
     [InlineData("page-layout.musicxml")]
     [InlineData("lyrics-ties.musicxml")]
+    [InlineData("percussion.musicxml")]
     [InlineData("finale-marks-2.musicxml")]
     public void ImportedProject_SurvivesSaveAndReopen(string file)
     {

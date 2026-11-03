@@ -215,8 +215,24 @@ public static partial class MusicXmlExporter
             var name = new XElement("part-name", part.Name);
             if (!part.ShowName) name.Add(new XAttribute("print-object", "no"));
             var scorePart = new XElement("score-part", new XAttribute("id", PartId(i)), name);
-            if (!string.IsNullOrWhiteSpace(part.Instrument))
+            if (part.Instruments.Count > 0)
+            {
+                // A drum set's instruments (docs/PERCUSSION.md); ids are made unique in the file by the part's id.
+                foreach (var instrument in part.Instruments)
+                    scorePart.Add(new XElement("score-instrument", new XAttribute("id", $"{PartId(i)}-{instrument.Id}"), new XElement("instrument-name", instrument.Name)));
+                foreach (var instrument in part.Instruments.Where(n => n.MidiChannel is not null || n.MidiProgram is not null || n.MidiUnpitched is not null))
+                {
+                    var midi = new XElement("midi-instrument", new XAttribute("id", $"{PartId(i)}-{instrument.Id}"));
+                    if (instrument.MidiChannel is { } channel) midi.Add(new XElement("midi-channel", channel));
+                    if (instrument.MidiProgram is { } program) midi.Add(new XElement("midi-program", program));
+                    if (instrument.MidiUnpitched is { } key) midi.Add(new XElement("midi-unpitched", key));
+                    scorePart.Add(midi);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(part.Instrument))
+            {
                 scorePart.Add(new XElement("score-instrument", new XAttribute("id", $"{PartId(i)}-I1"), new XElement("instrument-name", part.Instrument)));
+            }
             list.Add(scorePart);
 
             foreach (var (_, number) in groups.Where(g => g.Group.LastPart == i))

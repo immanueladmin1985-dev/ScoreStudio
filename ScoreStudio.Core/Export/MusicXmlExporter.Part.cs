@@ -519,9 +519,13 @@ public static partial class MusicXmlExporter
             var wasHidden = previous?.HiddenStaves ?? new List<int>();
             for (var staff = 0; staff < _staves; staff++)
             {
-                if (measure.HiddenStaves.Contains(staff) == wasHidden.Contains(staff)) continue;
-                attributes.Add(new XElement("staff-details", new XAttribute("number", staff + 1),
-                    new XAttribute("print-object", measure.HiddenStaves.Contains(staff) ? "no" : "yes")));
+                var hiddenChanges = measure.HiddenStaves.Contains(staff) != wasHidden.Contains(staff);
+                var lines = previous is null ? _part.Staves.ElementAtOrDefault(staff)?.Lines ?? 5 : 5;
+                if (!hiddenChanges && lines == 5) continue;
+                var details = new XElement("staff-details", new XAttribute("number", staff + 1));
+                if (hiddenChanges) details.Add(new XAttribute("print-object", measure.HiddenStaves.Contains(staff) ? "no" : "yes"));
+                if (lines != 5) details.Add(new XElement("staff-lines", lines));
+                attributes.Add(details);
             }
 
             if (previous is null && _part.Transpose is { } transpose)
@@ -534,8 +538,28 @@ public static partial class MusicXmlExporter
             if (attributes.HasElements) _measure.Add(attributes);
         }
 
+        private static readonly Dictionary<NoteheadShape, string> NoteheadNames = new()
+        {
+            [NoteheadShape.X] = "x",
+            [NoteheadShape.CircleX] = "circle-x",
+            [NoteheadShape.Diamond] = "diamond",
+            [NoteheadShape.Triangle] = "triangle",
+            [NoteheadShape.InvertedTriangle] = "inverted triangle",
+            [NoteheadShape.Square] = "square",
+            [NoteheadShape.Slash] = "slash",
+            [NoteheadShape.Cross] = "cross",
+        };
+
         private XElement Clef(int staff, ClefType clef)
         {
+            if (clef == ClefType.Percussion)
+            {
+                var percussion = new XElement("clef");
+                if (_staves > 1) percussion.Add(new XAttribute("number", staff + 1));
+                percussion.Add(new XElement("sign", "percussion"));
+                return percussion;
+            }
+
             var (sign, line, octave) = clef switch
             {
                 ClefType.Bass => ("F", 4, 0),
@@ -573,7 +597,7 @@ public static partial class MusicXmlExporter
         private Dictionary<ScoreEvent, string> Accidentals(ScoreMeasure measure)
         {
             var result = new Dictionary<ScoreEvent, string>(ReferenceEqualityComparer.Instance);
-            foreach (var staff in measure.Events.Where(e => e.Kind != "Rest").GroupBy(e => e.Staff))
+            foreach (var staff in measure.Events.Where(e => e.Kind != "Rest" && !e.Unpitched).GroupBy(e => e.Staff))
             {
                 var alters = new Dictionary<(int Step, int Octave), int>();
                 foreach (var note in staff.OrderBy(Start))
@@ -823,6 +847,13 @@ public static partial class MusicXmlExporter
                 if (isMeasureRest) rest.Add(new XAttribute("measure", "yes"));
                 note.Add(rest);
             }
+            else if (e.Unpitched)
+            {
+                // Its spelling is only a place on the staff (docs/PERCUSSION.md).
+                var place = Notation.Spell(e, context.Measure.KeyFifths);
+                note.Add(new XElement("unpitched",
+                    new XElement("display-step", "CDEFGAB"[place.Step].ToString()), new XElement("display-octave", place.Octave)));
+            }
             else
             {
                 var pitch = Notation.Spell(e, context.Measure.KeyFifths);
@@ -838,6 +869,7 @@ public static partial class MusicXmlExporter
             var tieStart = !isRest && e.TieToNext;
             if (tieStop) note.Add(new XElement("tie", new XAttribute("type", "stop")));
             if (tieStart) note.Add(new XElement("tie", new XAttribute("type", "start")));
+            if (!isRest && e.Instrument.Length > 0) note.Add(new XElement("instrument", new XAttribute("id", $"{_id}-{e.Instrument}")));
             note.Add(new XElement("voice", e.Voice));
 
             XElement? timeModification = null;
@@ -864,6 +896,7 @@ public static partial class MusicXmlExporter
             if (context.Accidentals.TryGetValue(e, out var accidental)) note.Add(new XElement("accidental", accidental));
             if (timeModification is not null) note.Add(timeModification);
             if (e.StemUp is { } up) note.Add(new XElement("stem", up ? "up" : "down"));
+            if (!isRest && e.Notehead != NoteheadShape.Normal) note.Add(new XElement("notehead", NoteheadNames[e.Notehead]));
             if (_staves > 1) note.Add(new XElement("staff", e.Staff + 1));
 
             if (!isChordMember)
