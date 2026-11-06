@@ -95,7 +95,8 @@ public static partial class ScoreLayoutEngine
         int Number, int Numerator, int Denominator, bool ShowsTimeSignature, int[] Keys, bool KeyChanges,
         bool ClefChangeAtStart, bool SystemBreak, bool PageBreak, bool RepeatStart, bool RepeatEnd, ScoreVolta? Volta,
         double? SourceWidth = null, int[]? PreviousKeys = null,
-        TimeSymbol Symbol = TimeSymbol.Normal, string BeatsText = "", IReadOnlyList<ScoreKeyAccidental>?[]? OtherKeys = null);
+        TimeSymbol Symbol = TimeSymbol.Normal, string BeatsText = "", IReadOnlyList<ScoreKeyAccidental>?[]? OtherKeys = null,
+        IReadOnlyList<ScoreKeyAccidental>?[]? PreviousOtherKeys = null);
 
     /// <summary>Room for a repeat sign (thick line, thin line, dots and a gap), in staff spaces.</summary>
     private const double RepeatSignWidth = 2.2;
@@ -419,7 +420,8 @@ public static partial class ScoreLayoutEngine
                 RepeatEnd: parts.Any(m => m.RepeatEnd),
                 Volta: parts.Select(m => m.Volta).FirstOrDefault(v => v is not null),
                 SourceWidth: parts.Select(m => m.SourceWidth).FirstOrDefault(w => w is not null),
-                PreviousKeys: previous?.Keys, Symbol: measure.TimeSymbol, BeatsText: measure.BeatsText, OtherKeys: otherKeys));
+                PreviousKeys: previous?.Keys, Symbol: measure.TimeSymbol, BeatsText: measure.BeatsText, OtherKeys: otherKeys,
+                PreviousOtherKeys: previous?.OtherKeys));
         }
 
         return infos;
@@ -469,10 +471,36 @@ public static partial class ScoreLayoutEngine
     }
 
     /// <summary>Width of a key change in mid-score: the naturals, a gap, and the new key; the widest part counts.</summary>
+    /// <summary>
+    /// A key's accidentals in the order written: an ordinary key's sharps or flats, or another key's list
+    /// (docs/FINALE_MARKS_3.md).
+    /// </summary>
+    private static List<ScoreKeyAccidental> KeyAccidentalsOf(int fifths, IReadOnlyList<ScoreKeyAccidental>? other) =>
+        other?.ToList() ?? (fifths > 0 ? "FCGDAEB" : "BEADGCF").Take(Math.Min(Math.Abs(fifths), 7))
+            .Select(step => new ScoreKeyAccidental { Step = step.ToString(), Alter = Math.Sign(fifths) }).ToList();
+
+    /// <summary>
+    /// When another key is left or entered: the old key's accidentals on steps the new key does not alter get naturals.
+    /// Null when both keys are ordinary (<see cref="CancelledAccidentals"/> counts those).
+    /// </summary>
+    private static List<ScoreKeyAccidental>? CancelledOtherAccidentals(MeasureInfo m, int part)
+    {
+        var (before, after) = (m.PreviousOtherKeys?[part], m.OtherKeys?[part]);
+        if (before is null && after is null || m.PreviousKeys is not { } previous || part >= previous.Length) return null;
+        var kept = KeyAccidentalsOf(m.Keys[part], after).Select(k => k.Step).ToHashSet();
+        return KeyAccidentalsOf(previous[part], before).Where(k => !kept.Contains(k.Step)).ToList();
+    }
+
     private static double KeyChangeWidth(MeasureInfo m) =>
         m.Keys.Select((key, p) =>
         {
             var cancelled = m.PreviousKeys is { } previous && p < previous.Length ? CancelledAccidentals(previous[p], key) : 0;
+            if (CancelledOtherAccidentals(m, p) is { } naturals)
+            {
+                var count = KeyAccidentalsOf(key, m.OtherKeys?[p]).Count;
+                return naturals.Count + count + (naturals.Count > 0 && count > 0 ? KeyCancelGap : 0);
+            }
+
             if (m.OtherKeys?[p] is { } other) return (double)other.Count;
             return cancelled + KeySignatureWidth(key) + (cancelled > 0 && key != 0 ? KeyCancelGap : 0);
         }).DefaultIfEmpty(0).Max();
@@ -808,7 +836,7 @@ public static partial class ScoreLayoutEngine
                 if (info.KeyChanges)
                 {
                     var clefsHere = slots.Select(s => clefs.ClefAt(s.PartIndex, s.StaffIndex, index, Rational.Zero)).ToArray();
-                    DrawKeyChange(items, slots, clefsHere, staffTops, info.PreviousKeys, info.Keys, prefixX, sp, info.OtherKeys);
+                    DrawKeyChange(items, slots, clefsHere, staffTops, info.PreviousKeys, info.Keys, prefixX, sp, info.OtherKeys, info);
                     prefixX += (KeyChangeWidth(info) + 1) * sp;
                 }
 
@@ -833,8 +861,9 @@ public static partial class ScoreLayoutEngine
         DrawSlurs(items, project, plan, placed, slots, staffTops, left + plan.HeaderWidth, right, pendingSpans, sp);
         DrawGlissandos(items, project, plan, placed, slots, staffTops, right, sp);
         DrawLyrics(items, placed, rests, staffTops, right, lyricSize, TextMetrics.IsSerifFamily(project.Engraving?.LyricFontFamily), sp);
-        var symbolTops = DrawChordSymbols(items, symbols, placed, staffTops, lyricSize, sp);
-        DrawDirectionsAndHairpins(items, project, plan, measureLayouts, placed, slots, staffTops, anchors, symbolTops, left + plan.HeaderWidth, right, pendingSpans, sp);
+        var frames = new List<(int Slot, double Left, double Right, double Top)>();
+        var symbolTops = DrawChordSymbols(items, symbols, placed, staffTops, lyricSize, sp, frames);
+        DrawDirectionsAndHairpins(items, project, plan, measureLayouts, placed, slots, staffTops, anchors, symbolTops, frames, left + plan.HeaderWidth, right, pendingSpans, sp);
         DrawVoltas(items, plan, measures, measureLayouts, placed, staffTops[0], symbolTops.TryGetValue(0, out var symbolTop) ? symbolTop : double.MaxValue, sp);
 
         return new SystemLayout
@@ -880,10 +909,21 @@ public static partial class ScoreLayoutEngine
     /// <summary>A key change in mid-score: naturals cancelling the old key's dropped accidentals, then the new key.</summary>
     private static void DrawKeyChange(
         List<DrawItem> items, List<StaffSlot> slots, ClefType[] clefs, double[] staffTops, int[]? previous, int[] keys, double x, double sp,
-        IReadOnlyList<ScoreKeyAccidental>?[]? otherKeys = null)
+        IReadOnlyList<ScoreKeyAccidental>?[]? otherKeys = null, MeasureInfo? info = null)
     {
         for (var i = 0; i < slots.Count; i++)
         {
+            if (info is not null && CancelledOtherAccidentals(info, slots[i].PartIndex) is { } others)
+            {
+                // Leaving or entering another key: naturals where the old accidentals were, then the new key.
+                var places = Notation.KeyAccidentalPositions(others, clefs[i]);
+                for (var a = 0; a < places.Count; a++)
+                    items.Add(new GlyphItem(Smufl.AccidentalNatural, x + a * sp, StaffY(staffTops[i], places[a], sp), 4 * sp));
+                var newX = x + (others.Count > 0 ? others.Count + KeyCancelGap : 0) * sp;
+                DrawKeySignature(items, new List<StaffSlot> { slots[i] }, new[] { clefs[i] }, new[] { staffTops[i] }, keys, newX, sp, otherKeys);
+                continue;
+            }
+
             var (from, to) = (previous?[slots[i].PartIndex] ?? 0, keys[slots[i].PartIndex]);
             var cancelled = CancelledAccidentals(from, to);
             var positions = Notation.KeySignaturePositions(from, clefs[i]);
@@ -1028,7 +1068,9 @@ public static partial class ScoreLayoutEngine
         var chords = beam.Chords;
         var up = beam.StemUp;
         var thickness = Smufl.StemThickness * sp;
-        var middle = staffTop + 2 * sp;
+        // Cue notes' beams are smaller, like their heads, and their stems need not reach the middle line.
+        var g = chords.All(c => c.Cue) ? CueScale : 1;
+        var middle = g < 1 ? (up ? double.MaxValue : double.MinValue) : staffTop + 2 * sp;
         var direction = up ? 1 : -1; // from the outer beam towards the notes
 
         var stemX = new double[chords.Count];
@@ -1039,15 +1081,15 @@ public static partial class ScoreLayoutEngine
         {
             var high = chords[i].Notes.Max(n => n.Position);
             var low = chords[i].Notes.Min(n => n.Position);
-            var headWidth = Smufl.NoteheadWidth(chords[i].Value.Type) * sp;
+            var headWidth = Smufl.NoteheadWidth(chords[i].Value.Type) * sp * (chords[i].Cue ? CueScale : 1);
             stemX[i] = up ? onsetXs[i] + headWidth - thickness / 2 : onsetXs[i] + thickness / 2;
             nearPosition[i] = up ? high : low;
             nearY[i] = StaffY(staffTop, nearPosition[i], sp);
-            farY[i] = up ? StaffY(staffTop, low, sp) - Smufl.StemAttachY * sp : StaffY(staffTop, high, sp) + Smufl.StemAttachY * sp;
+            farY[i] = up ? StaffY(staffTop, low, sp) - Smufl.StemAttachY * sp * g : StaffY(staffTop, high, sp) + Smufl.StemAttachY * sp * g;
         }
 
         var levels = chords.Max(c => Math.Max(c.Beams.Count, BeamLevels(c)));
-        var minimumStem = (3.5 + Math.Max(0, levels - 2) * (BeamThickness + BeamSpacing)) * sp;
+        var minimumStem = (3.5 + Math.Max(0, levels - 2) * (BeamThickness + BeamSpacing)) * sp * g;
 
         // Slope from the outer notes, unless an inner note sticks out beyond both of them.
         var x0 = stemX[0];
@@ -1084,11 +1126,11 @@ public static partial class ScoreLayoutEngine
 
         for (var level = 0; level < levels; level++)
         {
-            var shift = direction * level * (BeamThickness + BeamSpacing) * sp;
+            var shift = direction * level * (BeamThickness + BeamSpacing) * sp * g;
             void Band(double xa, double xb)
             {
-                var top = up ? 0 : -BeamThickness * sp;
-                items.Add(new BeamItem(xa, BeamY(xa) + shift + top, xb, BeamY(xb) + shift + top, BeamThickness * sp));
+                var top = up ? 0 : -BeamThickness * sp * g;
+                items.Add(new BeamItem(xa, BeamY(xa) + shift + top, xb, BeamY(xb) + shift + top, BeamThickness * sp * g));
             }
 
             var segments = BeamSegments(chords, level, out var hooks);

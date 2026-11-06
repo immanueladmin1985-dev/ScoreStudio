@@ -457,4 +457,46 @@ public sealed class MarksLayoutTests
 
         Assert.True(Glyph(page, Smufl.PedalPed).Y > top + 4 * Sp, "the symbol is under the staff");
     }
+
+    [Fact]
+    public void ChordDiagram_PushesUpOnlyTheMarksOverIt()
+    {
+        var project = Score(3, Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[1].Events.Add(Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[2].Events.Add(Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[0].ChordSymbols.Add(new ScoreChordSymbol { Text = "C", Frame = new ScoreFrame { Notes = { new() { String = 2, Fret = 1 } } } });
+        project.Parts[0].Measures[0].Directions.Add(new ScoreDirection { Kind = DirectionKind.Segno });
+        project.Parts[0].Measures[2].Directions.Add(new ScoreDirection { Kind = DirectionKind.Coda });
+        var (page, top) = Layout(project);
+
+        var dot = Glyph(page, Smufl.FretboardDot);
+        Assert.True(Glyph(page, Smufl.Segno).Y < dot.Y, "the segno over the diagram goes above it");
+        Assert.True(Glyph(page, Smufl.Coda).Y > dot.Y, "the coda two measures on stays near the staff");
+    }
+
+    [Fact]
+    public void LeavingAnotherKey_CancelsItsAccidentals()
+    {
+        var project = Score(2, Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[1].Events.Add(Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[0].KeyAccidentals.Add(new ScoreKeyAccidental { Step = "F", Alter = 1 });
+        project.Parts[0].Measures[0].KeyAccidentals.Add(new ScoreKeyAccidental { Step = "B", Alter = -1 });
+        project.Parts[0].Measures[1].KeyFifths = 1; // G major keeps the F sharp
+        var (page, top) = Layout(project);
+
+        var natural = Assert.Single(page.Items.OfType<GlyphItem>(), g => g.Glyph == Smufl.AccidentalNatural);
+        Assert.Equal(top + 2 * Sp, natural.Y, 6); // where the B flat was
+        Assert.Equal(2, page.Items.OfType<GlyphItem>().Count(g => g.Glyph == Smufl.AccidentalSharp)); // F sharp in both keys
+    }
+
+    [Fact]
+    public void CueBeams_AreSmallerThanNormalBeams()
+    {
+        ScoreEvent Eighth(int beat2, bool cue, BeamType beam) =>
+            new() { MidiPitch = 72, NotationSpelling = "C5", PositionNumerator = beat2, PositionDenominator = 2, DurationNumerator = 1, DurationDenominator = 2, Cue = cue, Beams = { beam } };
+        var (page, _) = Layout(Score(1, Eighth(0, true, BeamType.Begin), Eighth(1, true, BeamType.End), Eighth(2, false, BeamType.Begin), Eighth(3, false, BeamType.End)));
+        var beams = page.Items.OfType<BeamItem>().OrderBy(b => b.X1).ToList();
+        Assert.Equal(2, beams.Count);
+        Assert.Equal(0.75 * beams[1].Thickness, beams[0].Thickness, 6);
+    }
 }

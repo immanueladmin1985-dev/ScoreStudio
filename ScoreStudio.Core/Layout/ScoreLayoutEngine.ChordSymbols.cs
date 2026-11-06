@@ -35,7 +35,8 @@ public static partial class ScoreLayoutEngine
     /// </summary>
     /// <returns>The top of the symbols on each staff that has any, so brackets above can clear them.</returns>
     private static Dictionary<int, double> DrawChordSymbols(
-        List<DrawItem> items, List<PlacedSymbol> symbols, List<PlacedChord> placed, double[] staffTops, double size, double sp)
+        List<DrawItem> items, List<PlacedSymbol> symbols, List<PlacedChord> placed, double[] staffTops, double size, double sp,
+        List<(int Slot, double Left, double Right, double Top)> frames)
     {
         var tops = new Dictionary<int, double>();
         foreach (var staff in symbols.GroupBy(s => s.Slot))
@@ -46,7 +47,6 @@ public static partial class ScoreLayoutEngine
             var highest = placed.Where(p => p.Slot == staff.Key).Select(p => p.Top).DefaultIfEmpty(staffTop).Min();
             var baseline = sourceY is { } y ? staffTop - y * sp : Math.Min(staffTop - 2.5 * sp, highest - 0.6 * sp);
 
-            var top = baseline - 0.75 * size;
             foreach (var symbol in staff)
             {
                 var text = ChordDisplay(symbol.Symbol.Text);
@@ -55,11 +55,15 @@ public static partial class ScoreLayoutEngine
                 {
                     // Finger numbers go between the diagram and the symbol, so they need room there.
                     var gap = frame.Notes.Any(n => n.Fingering.Length > 0) ? 2.0 : 0.8;
-                    top = Math.Min(top, DrawFrame(items, frame, symbol.X + TextMetrics.Width(text, size) / 2, baseline - 0.75 * size - gap * sp, sp));
+                    var center = symbol.X + TextMetrics.Width(text, size) / 2;
+                    var frameTop = DrawFrame(items, frame, center, baseline - 0.75 * size - gap * sp, sp);
+                    // Only marks over the diagram itself need to clear it (docs/FINALE_MARKS_3.md).
+                    var half = (frame.Strings - 1) * FrameStringSpace * sp / 2 + 2 * sp;
+                    frames.Add((staff.Key, center - half, center + half, frameTop));
                 }
             }
 
-            tops[staff.Key] = top;
+            tops[staff.Key] = baseline - 0.75 * size;
         }
 
         return tops;

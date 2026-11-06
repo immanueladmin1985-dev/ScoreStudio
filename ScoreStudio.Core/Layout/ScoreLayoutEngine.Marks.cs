@@ -420,12 +420,17 @@ public static partial class ScoreLayoutEngine
     private static void DrawDirectionsAndHairpins(
         List<DrawItem> items, ScoreProject project, PlannedSystem plan, List<MeasureLayout> measureLayouts, List<PlacedChord> placed,
         List<StaffSlot> slots, double[] staffTops, Dictionary<int, List<(Rational Time, double X)>> anchors, Dictionary<int, double> symbolTops,
-        double contentLeft, double systemRight, PendingSpans pending, double sp)
+        List<(int Slot, double Left, double Right, double Top)> frames, double contentLeft, double systemRight, PendingSpans pending, double sp)
     {
         var textSize = ExpressionTextSize * sp;
 
-        // Marks above a staff go over its chord symbols as well as its notes.
-        double Highest(int slot, double top) => symbolTops.TryGetValue(slot, out var symbolTop) ? Math.Min(top, symbolTop - 0.3 * sp) : top;
+        // Marks above a staff go over its chord symbols as well as its notes, and over the chord diagrams they would touch.
+        double Highest(int slot, double top, double left = double.MinValue, double right = double.MaxValue)
+        {
+            if (symbolTops.TryGetValue(slot, out var symbolTop)) top = Math.Min(top, symbolTop - 0.3 * sp);
+            foreach (var frame in frames.Where(f => f.Slot == slot && f.Left < right && f.Right > left)) top = Math.Min(top, frame.Top - 0.3 * sp);
+            return top;
+        }
         var lyricSlots = placed.Where(p => p.Chord.Lyrics.Count > 0).Select(p => p.Slot).ToHashSet();
         double RowBaseline(int slot, bool above)
         {
@@ -521,7 +526,7 @@ public static partial class ScoreLayoutEngine
                         {
                             var under = placed.Where(c => c.Slot == slot && c.X + sp > x && c.X < x + width + sp).ToList();
                             baseline = above
-                                ? Highest(slot, Math.Min(staffTop - 1.5 * sp, under.Select(c => c.Top).DefaultIfEmpty(staffTop).Min() - 0.8 * sp))
+                                ? Highest(slot, Math.Min(staffTop - 1.5 * sp, under.Select(c => c.Top).DefaultIfEmpty(staffTop).Min() - 0.8 * sp), x, x + width)
                                 : Math.Max(staffTop + 6.5 * sp, under.Select(c => c.Bottom).DefaultIfEmpty(staffTop).Max() + 2.2 * sp);
                         }
 
@@ -673,7 +678,7 @@ public static partial class ScoreLayoutEngine
         List<DrawItem> items, ScoreProject project, PlannedSystem plan, List<MeasureLayout> measureLayouts, List<PlacedChord> placed,
         List<StaffSlot> slots, double[] staffTops, Dictionary<int, List<(Rational Time, double X)>> anchors,
         List<(int Slot, int Measure, Rational Position, double Right, double Baseline)> texts,
-        Func<int, bool, double> rowBaseline, Func<int, double, double> highest, double contentLeft, double systemRight, PendingSpans pending, double sp)
+        Func<int, bool, double> rowBaseline, Func<int, double, double, double, double> highest, double contentLeft, double systemRight, PendingSpans pending, double sp)
     {
         if (plan.MeasureCount == 0) return;
         var lastMeasure = plan.Measures[^1].Index;
@@ -696,7 +701,7 @@ public static partial class ScoreLayoutEngine
                     placed.Where(c => c.Slot == slot && c.X >= from - sp && c.X <= to).Select(c => c.Bottom).DefaultIfEmpty(staffTops[slot]).Max() + 3.0 * sp);
             var under = placed.Where(c => c.Slot == slot && c.X >= from - sp && c.X <= to).ToList();
             return above
-                ? highest(slot, Math.Min(staffTops[slot] - (line.Kind == LineKind.TrillLine ? 1.3 : 2.0) * sp, under.Select(c => c.Top).DefaultIfEmpty(staffTops[slot]).Min() - 1.0 * sp))
+                ? highest(slot, Math.Min(staffTops[slot] - (line.Kind == LineKind.TrillLine ? 1.3 : 2.0) * sp, under.Select(c => c.Top).DefaultIfEmpty(staffTops[slot]).Min() - 1.0 * sp), from, to)
                 : Math.Max(staffTops[slot] + 6 * sp, under.Select(c => c.Bottom).DefaultIfEmpty(staffTops[slot]).Max() + 1.5 * sp);
         }
 
