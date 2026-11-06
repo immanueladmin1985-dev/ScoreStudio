@@ -69,6 +69,10 @@ public partial class MainWindow : Window
         ApplyProjectToUi();
         SetTool(Enum.TryParse<EditorTool>(_settings.Tool, out var tool) && Enum.IsDefined(tool) ? tool : EditorTool.Speedy, save: false);
         Loaded += (_, _) => ScoreScroll.Focus();
+
+        var print = new RoutedCommand();
+        CommandBindings.Add(new CommandBinding(print, (_, _) => Print_Click(this, new RoutedEventArgs())));
+        InputBindings.Add(new KeyBinding(print, Key.P, ModifierKeys.Control));
     }
 
     // ---- Tools and commands (docs/KEYS_AND_TOOLS.md) -------------------------------------------------------------
@@ -598,6 +602,24 @@ public partial class MainWindow : Window
             var lines = warnings.Select(w => $"• {w.Message}: {w.Count}개 (처음: {w.FirstLocation})");
             MessageBox.Show(this, $"{fileName}로 내보냈습니다. 다음 항목은 정확히 내보내지 못했습니다.\n\n{string.Join("\n", lines)}",
                 "내보내기 경고", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>Prints the score as it is laid out on screen, one layout page per printed page (docs/PDF_EXPORT.md).</summary>
+    private void Print_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new PrintDialog { UserPageRangeEnabled = false };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var layout = ScoreLayoutEngine.Layout(Project);
+            dialog.PrintDocument(new ScorePaginator(layout), string.IsNullOrWhiteSpace(Project.Title) ? "ScoreStudio 악보" : Project.Title);
+            StatusText.Content = $"인쇄를 보냈습니다 ({layout.Pages.Count}쪽).";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Printing.PrintSystemException)
+        {
+            MessageBox.Show(this, $"인쇄하지 못했습니다.\n\n{ex.Message}", "인쇄 오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText.Content = "인쇄 실패";
         }
     }
 

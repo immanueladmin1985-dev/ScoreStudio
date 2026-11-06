@@ -12,6 +12,8 @@
                 <MenuItem Header="새 악보" Click="NewScore_Click"/>
                 <MenuItem Header="열기..." Click="OpenProject_Click"/>
                 <MenuItem Header="저장..." Click="SaveProject_Click"/>
+                <MenuItem Header="인쇄..." InputGestureText="Ctrl+P" Click="Print_Click"
+                          ToolTip="화면과 같은 악보를 프린터로 인쇄합니다. 프린터 목록의 Microsoft Print to PDF로도 PDF를 만들 수 있습니다."/>
                 <Separator/>
                 <MenuItem Header="가져오기">
                     <MenuItem Header="MusicXML..." Click="ImportMusicXml_Click"/>
