@@ -170,11 +170,14 @@ public static class PdfExporter
                 var runs = Runs(text.Text, chain);
                 var width = runs.Sum(r => r.Font.Width(r.Glyphs) * size);
                 var (x, y) = P(text.X, text.Y, height);
-                x -= text.Anchor switch { TextAnchor.Middle => width / 2, TextAnchor.End => width, _ => 0 };
+                // Along the baseline, turned clockwise on the page (counter-clockwise in PDF, whose y points up).
+                var angle = -text.Angle * Math.PI / 180;
+                var (cos, sin) = (Math.Cos(angle), Math.Sin(angle));
+                var shift = -(text.Anchor switch { TextAnchor.Middle => width / 2, TextAnchor.End => width, _ => 0 });
                 foreach (var run in runs)
                 {
-                    content.Append($"BT /{run.Font.ResourceName} {N(size)} Tf {N(x)} {N(y)} Td <{string.Concat(run.Glyphs.Select(g => g.ToString("X4")))}> Tj ET\n");
-                    x += run.Font.Width(run.Glyphs) * size;
+                    content.Append($"BT /{run.Font.ResourceName} {N(size)} Tf {N(cos)} {N(sin)} {N(-sin)} {N(cos)} {N(x + shift * cos)} {N(y + shift * sin)} Tm <{string.Concat(run.Glyphs.Select(g => g.ToString("X4")))}> Tj ET\n");
+                    shift += run.Font.Width(run.Glyphs) * size;
                 }
 
                 break;

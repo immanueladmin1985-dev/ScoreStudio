@@ -499,4 +499,19 @@ public sealed class MarksLayoutTests
         Assert.Equal(2, beams.Count);
         Assert.Equal(0.75 * beams[1].Thickness, beams[0].Thickness, 6);
     }
+
+    [Fact]
+    public void GlissandoText_RunsAlongTheLine_AboveIt()
+    {
+        var project = Score(1, Note("C5", 72, 0, 2), Note("G5", 79, 2, 2));
+        project.Parts[0].Measures[0].Glissandos.Add(new ScoreGlissando { PositionNumerator = 0, EndPositionNumerator = 2, Text = "gliss." });
+        var (page, _) = Layout(project);
+
+        var line = Assert.Single(page.Items.OfType<LineItem>(), l => l.X1 != l.X2 && l.Y1 != l.Y2);
+        var text = Assert.Single(page.Items.OfType<TextItem>(), t => t.Text == "gliss.");
+        Assert.Equal(Math.Atan2(line.Y2 - line.Y1, line.X2 - line.X1) * 180 / Math.PI, text.Angle, 6);
+        Assert.True(text.Angle < 0, "the line rises");
+        Assert.True(text.Y < (line.Y1 + line.Y2) / 2, "above the line's middle");
+        Assert.InRange(text.X, line.X1, line.X2);
+    }
 }

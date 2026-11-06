@@ -42,7 +42,9 @@ public sealed record GlyphItem(char Glyph, double X, double Y, double Size) : Dr
 /// <summary>Plain text such as titles and part names. <paramref name="Y"/> is the text baseline.</summary>
 /// <param name="Serif">Drawn in the serif lyric font instead of the sans-serif text font.</param>
 /// <param name="Italic">Drawn slanted, as expression text ("dolce", "rit.") usually is.</param>
-public sealed record TextItem(string Text, double X, double Y, double Size, TextAnchor Anchor, bool Bold = false, bool Serif = false, bool Italic = false) : DrawItem;
+/// <param name="Angle">Rotation about (<paramref name="X"/>, <paramref name="Y"/>) in degrees, clockwise on the page (a glissando's "gliss.").</param>
+public sealed record TextItem(string Text, double X, double Y, double Size, TextAnchor Anchor, bool Bold = false, bool Serif = false, bool Italic = false,
+    double Angle = 0) : DrawItem;
 
 /// <summary>Which point of the text <see cref="TextItem.X"/> refers to.</summary>
 public enum TextAnchor

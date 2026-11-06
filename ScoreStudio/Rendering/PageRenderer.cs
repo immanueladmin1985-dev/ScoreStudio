@@ -102,7 +102,9 @@ public static class PageRenderer
                         TextAnchor.End => formatted.WidthIncludingTrailingWhitespace,
                         _ => 0,
                     };
+                    if (text.Angle != 0) dc.PushTransform(new RotateTransform(text.Angle, text.X * DipPerMm, text.Y * DipPerMm));
                     dc.DrawText(formatted, new Point(x, text.Y * DipPerMm - formatted.Baseline));
+                    if (text.Angle != 0) dc.Pop();
                     break;
             }
         }

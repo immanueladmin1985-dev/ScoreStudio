@@ -239,6 +239,9 @@ public static partial class ScoreLayoutEngine
 
     private const double FingeringTextSize = 1.9;
 
+    /// <summary>Size of a glissando's text, in staff spaces.</summary>
+    private const double GlissandoTextSize = 1.5;
+
     /// <summary>
     /// Fingerings (docs/FINALE_MARKS_3.md): a column of numbers over the chord (or under it when placed below), the top
     /// note's on top, centred on the noteheads. Returns the chord's new reach.
@@ -868,6 +871,17 @@ public static partial class ScoreLayoutEngine
                     var thickness = Smufl.StemThickness * sp * 1.2;
                     if (glissando.Wavy) AddZigzag(items, x1, y1, x2, y2, 0.22 * sp, 0.45 * sp, thickness);
                     else items.Add(new LineItem(x1, y1, x2, y2, thickness));
+
+                    // Its text ("gliss.") along the line, just above it, when there is room.
+                    var length = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+                    var textSize = GlissandoTextSize * sp;
+                    if (glissando.Text.Length > 0 && end is not null && length > TextMetrics.Width(glissando.Text, textSize) + 1.5 * sp)
+                    {
+                        var (ux, uy) = ((x2 - x1) / length, (y2 - y1) / length);
+                        var lift = (glissando.Wavy ? 0.6 : 0.35) * sp;
+                        items.Add(new TextItem(glissando.Text, (x1 + x2) / 2 + uy * lift, (y1 + y2) / 2 - ux * lift, textSize, TextAnchor.Middle,
+                            Italic: true, Angle: Math.Atan2(y2 - y1, x2 - x1) * 180 / Math.PI));
+                    }
                 }
             }
         }
