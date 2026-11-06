@@ -157,4 +157,97 @@ public sealed class ScoreEditorMarksTests
         Assert.Equal(new[] { Articulation.Marcato }, Measure(editor, 0).Events[3].Articulations);
         Assert.Equal("sfz", Assert.Single(Measure(editor, 0).Directions).Text);
     }
+
+    [Fact]
+    public void SmartShapes_DrawGlissandos_TrillLines_Brackets_AndPedals_AndAreClearedAndUndone()
+    {
+        var editor = Editor();
+        editor.Shape = ShapeKind.Glissando;
+        Assert.True(editor.AddShape(At(0, 0), At(0, 1), ShapeKind.Glissando).Done);
+        Assert.True(editor.AddShape(At(0, 2), At(1, 0), ShapeKind.TrillLine).Done);
+        Assert.True(editor.AddShape(At(1, 1), At(1, 3), ShapeKind.Bracket).Done);
+        Assert.True(editor.AddShape(At(0, 0), At(0, 3), ShapeKind.PedalSigns).Done);
+
+        var m0 = Measure(editor, 0);
+        var gliss = Assert.Single(m0.Glissandos);
+        Assert.Equal((0, 0, 1), (gliss.PositionNumerator, gliss.EndMeasureOffset, gliss.EndPositionNumerator));
+        Assert.Contains(Articulation.Trill, m0.Events[2].Articulations); // a trill line comes with its "tr"
+        Assert.Equal(new[] { "TrillLine 2→1/0", "Pedal 0→0/3 sign" },
+            m0.Lines.OrderBy(l => l.Kind).Select(l => $"{l.Kind} {l.PositionNumerator}→{l.EndMeasureOffset}/{l.EndPositionNumerator}{(l.PedalSign ? " sign" : "")}"));
+        var bracket = Assert.Single(Measure(editor, 1).Lines);
+        Assert.Equal((LineKind.Bracket, (bool?)true, -1, -1), (bracket.Kind, bracket.Above, bracket.StartHook, bracket.EndHook));
+
+        editor.Select(At(0, 0));
+        Assert.True(editor.ClearShapes().Done);
+        Assert.Empty(Measure(editor, 0).Glissandos);
+        Assert.Equal(LineKind.TrillLine, Assert.Single(Measure(editor, 0).Lines).Kind);
+        editor.Undo();
+        Assert.Single(Measure(editor, 0).Glissandos);
+        Assert.Equal("글리산도", ScoreEditor.ShapeName(ShapeKind.Glissando));
+    }
+
+    [Fact]
+    public void RehearsalMarks_CountOn_AndSegnoAndCodaToggle()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 0));
+        Assert.True(editor.SetRehearsal("").Done);
+        editor.Select(At(1, 0));
+        Assert.True(editor.SetRehearsal("").Done);
+        Assert.Equal(new[] { "A", "B" }, editor.Project.Parts[0].Measures.SelectMany(m => m.Directions).Where(d => d.Kind == DirectionKind.Rehearsal).Select(d => d.Text));
+        Assert.True(editor.SetRehearsal("Intro").Done);
+        Assert.Equal("Intro", Measure(editor, 1).Directions.Single(d => d.Kind == DirectionKind.Rehearsal).Text);
+
+        Assert.True(editor.ToggleSign(DirectionKind.Segno).Done);
+        Assert.Contains(Measure(editor, 1).Directions, d => d.Kind == DirectionKind.Segno);
+        Assert.True(editor.ToggleSign(DirectionKind.Segno).Done);
+        Assert.DoesNotContain(Measure(editor, 1).Directions, d => d.Kind == DirectionKind.Segno);
+        Assert.False(editor.ToggleSign(DirectionKind.Words).Done);
+    }
+
+    [Fact]
+    public void ChordMarks_Fingerings_Tremolos_BuzzRolls_Arpeggios_AccidentalMarks_AndCueNotes()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 0));
+        Assert.True(editor.AddToChordAt(At(0, 0), 4 * 7 + 4).Done); // G4 under the C5
+        editor.Select(At(0, 0));
+
+        Assert.True(editor.SetFingering("1 4-5").Done);
+        var chord = Measure(editor, 0).Events.Where(e => e.PositionNumerator == 0).OrderBy(e => e.MidiPitch).ToList();
+        Assert.Equal(new[] { "1", "4,5" }, chord.Select(e => string.Join(",", e.Fingerings)));
+        Assert.False(editor.SetFingering("1 2 3").Done);   // more numbers than notes
+        Assert.False(editor.SetFingering("1/2").Done);
+        Assert.True(editor.SetFingering("").Done);
+        Assert.All(chord, e => Assert.Empty(e.Fingerings));
+
+        Assert.True(editor.SetTremolo(3).Done);
+        Assert.Equal(3, chord.Max(e => e.Tremolo));
+        Assert.True(editor.ToggleBuzzRoll().Done);
+        Assert.Equal((0, true), (chord.Max(e => e.Tremolo), chord.Any(e => e.BuzzRoll)));
+        Assert.True(editor.SetArpeggio(ArpeggioKind.Up).Done);
+        Assert.All(chord, e => Assert.Equal(ArpeggioKind.Up, e.Arpeggio));
+        Assert.True(editor.SetArpeggio(ArpeggioKind.Up).Done);
+        Assert.All(chord, e => Assert.Equal(ArpeggioKind.None, e.Arpeggio));
+        Assert.True(editor.SetAccidentalMark(1).Done);
+        Assert.Equal(1, chord.Select(e => e.AccidentalMark).Single(a => a is not null));
+        Assert.True(editor.ToggleCue().Done);
+        Assert.All(chord, e => Assert.True(e.Cue));
+    }
+
+    [Fact]
+    public void CommonTime_AndBarlineFermatas_AreSetOnTheMeasure()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 0));
+        Assert.True(editor.ToggleTimeAbbreviation().Done);
+        Assert.All(editor.Project.Parts[0].Measures, m => Assert.Equal(TimeSymbol.Common, m.TimeSymbol));
+        Assert.True(editor.ToggleTimeAbbreviation().Done);
+        Assert.All(editor.Project.Parts[0].Measures, m => Assert.Equal(TimeSymbol.Normal, m.TimeSymbol));
+
+        Assert.True(editor.ToggleBarlineFermata().Done);
+        Assert.True(Measure(editor, 0).BarlineFermata);
+        editor.Undo();
+        Assert.False(Measure(editor, 0).BarlineFermata);
+    }
 }

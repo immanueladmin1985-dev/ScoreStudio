@@ -44,6 +44,30 @@ public static class MarkPrompts
         return (unit, dots, speed.Text);
     }
 
+    /// <summary>Asks for fingerings ("1 3 5", "4-1") and whether they go below; null when cancelled.</summary>
+    public static (string Text, bool Above)? AskFingering(Window owner)
+    {
+        var text = new TextBox { MinWidth = 260, Margin = new Thickness(0, 4, 0, 8) };
+        var below = new CheckBox { Content = "음표 아래에 쓰기", Margin = new Thickness(0, 0, 0, 8) };
+        var ok = Show(owner, "운지 번호 넣기", new UIElement[]
+        {
+            new TextBlock { Text = "화음의 아래 음부터 띄어 씁니다(예: 1 3 5). 바꿔 짚기는 4-1처럼 씁니다. 비우면 지웁니다." },
+            text, below,
+        }, text);
+        return ok ? (text.Text, below.IsChecked != true) : null;
+    }
+
+    /// <summary>Asks for a rehearsal mark's text; empty takes the next letter. Null when cancelled.</summary>
+    public static string? AskRehearsal(Window owner)
+    {
+        var text = new TextBox { MinWidth = 160, Margin = new Thickness(0, 4, 0, 8) };
+        var ok = Show(owner, "리허설 마크 넣기", new UIElement[]
+        {
+            new TextBlock { Text = "네모 안에 쓸 글자 (예: A, 12, Intro). 비우면 앞 마크의 다음 글자를 씁니다." }, text,
+        }, text);
+        return ok ? text.Text : null;
+    }
+
     private static bool Show(Window owner, string title, IEnumerable<UIElement> rows, TextBox focus)
     {
         var panel = new StackPanel { Margin = new Thickness(16) };

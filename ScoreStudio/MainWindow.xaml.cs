@@ -90,7 +90,7 @@ public partial class MainWindow : Window
         EditorTool.TimeSignature => "박자표",
         EditorTool.Articulation => "아티큘",
         EditorTool.Expression => "표현",
-        EditorTool.SmartShape => "이음줄",
+        EditorTool.SmartShape => "도형",
         _ => "음자리표",
     };
 
@@ -103,9 +103,9 @@ public partial class MainWindow : Window
         EditorTool.Chord => "누른 자리에 코드 이름을 넣습니다(예: Am7, Bb/D).",
         EditorTool.KeySignature => "마디를 누르면 그 마디부터의 조표를 고릅니다.",
         EditorTool.TimeSignature => "마디를 누르면 그 마디부터의 박자표를 고릅니다.",
-        EditorTool.Articulation => "음표를 누르면 아티큘레이션을 고릅니다. 음표를 고른 뒤 S 스타카토, A 악센트, T 테누토, V 마르카토, W 스타카티시모, F 페르마타, Delete 지우기.",
-        EditorTool.Expression => "음표를 누르면 셈여림·글자를 고릅니다. 음표를 고른 뒤 1 pp, 2 p, 3 mp, 4 mf, 5 f, 6 ff, 7 sfz, 8 fp, T 글자, M 메트로놈, Delete 지우기.",
-        EditorTool.SmartShape => "시작 음표와 끝 음표를 차례로 누르면 이음줄을 넣습니다. S 이음줄, < 크레셴도, > 디크레셴도로 고르고, 시작 음표를 고른 뒤 Delete로 지웁니다.",
+        EditorTool.Articulation => "음표를 누르면 아티큘레이션을 고릅니다. 음표를 고른 뒤 S 스타카토, A 악센트, T 테누토, V 마르카토, W 스타카티시모, F 페르마타, N 운지 번호, 1~3 트레몰로, Z 버즈 롤, R 아르페지오, Delete 지우기.",
+        EditorTool.Expression => "음표를 누르면 셈여림·글자를 고릅니다. 음표를 고른 뒤 1 pp, 2 p, 3 mp, 4 mf, 5 f, 6 ff, 7 sfz, 8 fp, T 글자, M 메트로놈, R 리허설 마크, S 세뇨, C 코다, Delete 지우기.",
+        EditorTool.SmartShape => "시작 음표와 끝 음표를 차례로 누르면 도형을 넣습니다. S 이음줄, < 크레셴도, > 디크레셴도, G 글리산도, T 트릴 연장선, B 괄호선, P 페달 선, Shift+P 페달(Ped. *)로 고르고, 시작 음표를 고른 뒤 Delete로 지웁니다.",
         _ => "음표나 입력 위치를 누르면 그 자리의 음자리표를 고릅니다.",
     };
 
@@ -267,12 +267,26 @@ public partial class MainWindow : Window
             case EditorCommand.TempoMark:
                 if (MarkPrompts.AskTempo(this) is { } tempo) RunEdit(ed => ed.SetTempo(tempo.Unit, tempo.Dots, tempo.PerMinute));
                 break;
+            case EditorCommand.Fingering:
+                if (MarkPrompts.AskFingering(this) is { } fingering) RunEdit(ed => ed.SetFingering(fingering.Text, fingering.Above));
+                break;
+            case EditorCommand.RehearsalText:
+                if (MarkPrompts.AskRehearsal(this) is { } rehearsal) RunEdit(ed => ed.SetRehearsal(rehearsal));
+                break;
         }
     }
 
     /// <summary>The Articulation tool's choices for the clicked note, as Finale's articulation selection shows them.</summary>
     private IEnumerable<MenuItem> ArticulationItems() =>
         Enum.GetValues<Articulation>().Select(a => CommandItem(ScoreEditor.ArticulationName(a), () => RunEdit(ed => ed.ToggleArticulation(a))))
+            .Concat(new[]
+            {
+                // docs/MARK_TOOLS.md: what the Articulation tool puts on a chord besides its marks.
+                EditorCommand.Fingering, EditorCommand.Tremolo1, EditorCommand.Tremolo2, EditorCommand.Tremolo3, EditorCommand.TremoloOff,
+                EditorCommand.BuzzRoll, EditorCommand.Arpeggio, EditorCommand.ArpeggioUp, EditorCommand.ArpeggioDown, EditorCommand.NonArpeggio,
+                EditorCommand.AccidentalMarkSharp, EditorCommand.AccidentalMarkFlat, EditorCommand.AccidentalMarkNatural, EditorCommand.AccidentalMarkOff,
+                EditorCommand.CueNotes,
+            }.Select(c => CommandItem(KeyMap.Info(c).Name, () => RunCommand(c))))
             .Append(CommandItem("모두 지우기", () => RunEdit(ed => ed.ClearArticulations())));
 
     /// <summary>The Expression tool's choices for the clicked place: dynamics, text, metronome mark, clearing.</summary>
@@ -281,6 +295,8 @@ public partial class MainWindow : Window
             .Select(d => CommandItem(d, () => RunEdit(ed => ed.SetDynamic(d))))
             .Append(CommandItem("글자 넣기...", () => RunWindowCommand(EditorCommand.ExpressionText)))
             .Append(CommandItem("메트로놈 표시 넣기...", () => RunWindowCommand(EditorCommand.TempoMark)))
+            .Concat(new[] { EditorCommand.RehearsalMark, EditorCommand.RehearsalText, EditorCommand.Segno, EditorCommand.Coda }
+                .Select(c => CommandItem(KeyMap.Info(c).Name, () => RunCommand(c))))
             .Append(CommandItem("이 자리의 셈여림·글자 지우기", () => RunEdit(ed => ed.ClearExpressions())));
 
     private void KeySettings_Click(object sender, RoutedEventArgs e)

@@ -9,6 +9,13 @@ public enum ShapeKind
     Slur,
     Crescendo,
     Diminuendo,
+
+    // docs/MARK_TOOLS.md
+    Glissando,
+    TrillLine,
+    Bracket,
+    PedalLine,
+    PedalSigns,
 }
 
 /// <summary>
@@ -62,7 +69,12 @@ public sealed partial class ScoreEditor
     {
         ShapeKind.Slur => "이음줄",
         ShapeKind.Crescendo => "크레셴도",
-        _ => "디크레셴도",
+        ShapeKind.Diminuendo => "디크레셴도",
+        ShapeKind.Glissando => "글리산도",
+        ShapeKind.TrillLine => "트릴 연장선",
+        ShapeKind.Bracket => "괄호선",
+        ShapeKind.PedalLine => "페달 선",
+        _ => "페달(Ped. *)",
     };
 
     /// <summary>The place a mark goes: the selected chord or rest, else the cursor.</summary>
@@ -207,6 +219,8 @@ public sealed partial class ScoreEditor
         {
             var measure = MeasureAt(from);
             var (start, end) = (from.Position, to.Position);
+            if (shape is ShapeKind.Glissando or ShapeKind.TrillLine or ShapeKind.Bracket or ShapeKind.PedalLine or ShapeKind.PedalSigns)
+                return AddLineShape(measure, from, to, shape);
             if (shape == ShapeKind.Slur)
             {
                 measure.Slurs.RemoveAll(s => s.Staff == from.Staff && s.Voice == from.Voice && new Rational(s.PositionNumerator, s.PositionDenominator) == start);
@@ -244,8 +258,10 @@ public sealed partial class ScoreEditor
         {
             var measure = MeasureAt(at);
             var removed = measure.Slurs.RemoveAll(s => s.Staff == at.Staff && s.Voice == at.Voice && new Rational(s.PositionNumerator, s.PositionDenominator) == at.Position)
-                + measure.Hairpins.RemoveAll(h => h.Staff == at.Staff && new Rational(h.PositionNumerator, h.PositionDenominator) == at.Position);
-            return removed == 0 ? "이 음표에서 시작하는 이음줄·크레셴도가 없습니다." : null;
-        }, () => "이 음표에서 시작하는 이음줄·크레셴도를 지웠습니다.");
+                + measure.Hairpins.RemoveAll(h => h.Staff == at.Staff && new Rational(h.PositionNumerator, h.PositionDenominator) == at.Position)
+                + measure.Glissandos.RemoveAll(g => g.Staff == at.Staff && g.Voice == at.Voice && new Rational(g.PositionNumerator, g.PositionDenominator) == at.Position)
+                + measure.Lines.RemoveAll(l => l.Staff == at.Staff && new Rational(l.PositionNumerator, l.PositionDenominator) == at.Position);
+            return removed == 0 ? "이 음표에서 시작하는 스마트 도형이 없습니다." : null;
+        }, () => "이 음표에서 시작하는 스마트 도형(이음줄·크레셴도·글리산도·선)을 지웠습니다.");
     }
 }

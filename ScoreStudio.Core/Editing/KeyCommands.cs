@@ -26,6 +26,13 @@ public enum EditorCommand
     ArticulationStaccato, ArticulationStaccatissimo, ArticulationAccent, ArticulationMarcato, ArticulationTenuto, ArticulationFermata, ClearArticulations,
     DynamicPP, DynamicP, DynamicMP, DynamicMF, DynamicF, DynamicFF, DynamicSfz, DynamicFp, ExpressionText, TempoMark, ClearExpressions,
     ShapeSlur, ShapeCrescendo, ShapeDiminuendo, ClearShapes,
+
+    // More marks (docs/MARK_TOOLS.md).
+    ShapeGlissando, ShapeTrillLine, ShapeBracket, ShapePedalLine, ShapePedalSigns,
+    RehearsalMark, RehearsalText, Segno, Coda,
+    Fingering, Tremolo1, Tremolo2, Tremolo3, TremoloOff, BuzzRoll, Arpeggio, ArpeggioUp, ArpeggioDown, NonArpeggio,
+    AccidentalMarkSharp, AccidentalMarkFlat, AccidentalMarkNatural, AccidentalMarkOff, CueNotes,
+    TimeAbbreviation, BarlineFermata,
 }
 
 /// <summary>Where a key works: everywhere, or only with one tool.</summary>
@@ -201,7 +208,33 @@ public sealed class KeyMap
         new(EditorCommand.ShapeSlur, "스마트 도형", "이음줄 고르기"),
         new(EditorCommand.ShapeCrescendo, "스마트 도형", "크레셴도 고르기"),
         new(EditorCommand.ShapeDiminuendo, "스마트 도형", "디크레셴도 고르기"),
-        new(EditorCommand.ClearShapes, "스마트 도형", "음표에서 시작하는 이음줄·크레셴도 지우기"),
+        new(EditorCommand.ClearShapes, "스마트 도형", "음표에서 시작하는 스마트 도형 지우기"),
+        new(EditorCommand.ShapeGlissando, "스마트 도형", "글리산도 고르기"),
+        new(EditorCommand.ShapeTrillLine, "스마트 도형", "트릴 연장선 고르기"),
+        new(EditorCommand.ShapeBracket, "스마트 도형", "괄호선 고르기"),
+        new(EditorCommand.ShapePedalLine, "스마트 도형", "페달 선 고르기"),
+        new(EditorCommand.ShapePedalSigns, "스마트 도형", "페달(Ped. *) 고르기"),
+        new(EditorCommand.RehearsalMark, "표현", "리허설 마크 넣기(다음 글자)"),
+        new(EditorCommand.RehearsalText, "표현", "리허설 마크 글자 넣기..."),
+        new(EditorCommand.Segno, "표현", "세뇨 넣기·빼기"),
+        new(EditorCommand.Coda, "표현", "코다 넣기·빼기"),
+        new(EditorCommand.Fingering, "아티큘레이션", "운지 번호 넣기..."),
+        new(EditorCommand.Tremolo1, "아티큘레이션", "트레몰로 빗금 1개"),
+        new(EditorCommand.Tremolo2, "아티큘레이션", "트레몰로 빗금 2개"),
+        new(EditorCommand.Tremolo3, "아티큘레이션", "트레몰로 빗금 3개"),
+        new(EditorCommand.TremoloOff, "아티큘레이션", "트레몰로 빼기"),
+        new(EditorCommand.BuzzRoll, "아티큘레이션", "버즈 롤 넣기·빼기"),
+        new(EditorCommand.Arpeggio, "아티큘레이션", "아르페지오 넣기·빼기"),
+        new(EditorCommand.ArpeggioUp, "아티큘레이션", "위로 펴는 아르페지오"),
+        new(EditorCommand.ArpeggioDown, "아티큘레이션", "아래로 펴는 아르페지오"),
+        new(EditorCommand.NonArpeggio, "아티큘레이션", "논아르페지오(괄호)"),
+        new(EditorCommand.AccidentalMarkSharp, "아티큘레이션", "임시표 기호 ♯"),
+        new(EditorCommand.AccidentalMarkFlat, "아티큘레이션", "임시표 기호 ♭"),
+        new(EditorCommand.AccidentalMarkNatural, "아티큘레이션", "임시표 기호 ♮"),
+        new(EditorCommand.AccidentalMarkOff, "아티큘레이션", "임시표 기호 빼기"),
+        new(EditorCommand.CueNotes, "음표", "큐 음표로 바꾸기·되돌리기"),
+        new(EditorCommand.TimeAbbreviation, "마디", "4/4를 C, 2/2를 ¢로 쓰기·되돌리기"),
+        new(EditorCommand.BarlineFermata, "마디", "마디 끝 마디선의 페르마타"),
     };
 
     public static CommandInfo Info(EditorCommand command) => Commands.First(c => c.Command == command);
@@ -293,6 +326,20 @@ public sealed class KeyMap
         Bind(KeyScope.SmartShape, EditorCommand.ShapeCrescendo, K("OemComma", shift: true));
         Bind(KeyScope.SmartShape, EditorCommand.ShapeDiminuendo, K("OemPeriod", shift: true));
         Bind(KeyScope.SmartShape, EditorCommand.ClearShapes, K("Delete"), K("Back"));
+        Bind(KeyScope.SmartShape, EditorCommand.ShapeGlissando, K("G"));
+        Bind(KeyScope.SmartShape, EditorCommand.ShapeTrillLine, K("T"));
+        Bind(KeyScope.SmartShape, EditorCommand.ShapeBracket, K("B"));
+        Bind(KeyScope.SmartShape, EditorCommand.ShapePedalLine, K("P"));
+        Bind(KeyScope.SmartShape, EditorCommand.ShapePedalSigns, K("P", shift: true));
+        Bind(KeyScope.Expression, EditorCommand.RehearsalMark, K("R"));
+        Bind(KeyScope.Expression, EditorCommand.Segno, K("S"));
+        Bind(KeyScope.Expression, EditorCommand.Coda, K("C"));
+        Bind(KeyScope.Articulation, EditorCommand.Fingering, K("N"));
+        Bind(KeyScope.Articulation, EditorCommand.Tremolo1, K("D1"));
+        Bind(KeyScope.Articulation, EditorCommand.Tremolo2, K("D2"));
+        Bind(KeyScope.Articulation, EditorCommand.Tremolo3, K("D3"));
+        Bind(KeyScope.Articulation, EditorCommand.BuzzRoll, K("Z"));
+        Bind(KeyScope.Articulation, EditorCommand.Arpeggio, K("R"));
         return map;
     }
 
@@ -454,6 +501,30 @@ public static class CommandRunner
         EditorCommand.ShapeCrescendo => ChooseShape(editor, ShapeKind.Crescendo),
         EditorCommand.ShapeDiminuendo => ChooseShape(editor, ShapeKind.Diminuendo),
         EditorCommand.ClearShapes => editor.ClearShapes(),
+        EditorCommand.ShapeGlissando => ChooseShape(editor, ShapeKind.Glissando),
+        EditorCommand.ShapeTrillLine => ChooseShape(editor, ShapeKind.TrillLine),
+        EditorCommand.ShapeBracket => ChooseShape(editor, ShapeKind.Bracket),
+        EditorCommand.ShapePedalLine => ChooseShape(editor, ShapeKind.PedalLine),
+        EditorCommand.ShapePedalSigns => ChooseShape(editor, ShapeKind.PedalSigns),
+        EditorCommand.RehearsalMark => editor.SetRehearsal(""),
+        EditorCommand.Segno => editor.ToggleSign(DirectionKind.Segno),
+        EditorCommand.Coda => editor.ToggleSign(DirectionKind.Coda),
+        EditorCommand.Tremolo1 => editor.SetTremolo(1),
+        EditorCommand.Tremolo2 => editor.SetTremolo(2),
+        EditorCommand.Tremolo3 => editor.SetTremolo(3),
+        EditorCommand.TremoloOff => editor.SetTremolo(0),
+        EditorCommand.BuzzRoll => editor.ToggleBuzzRoll(),
+        EditorCommand.Arpeggio => editor.SetArpeggio(ArpeggioKind.Wavy),
+        EditorCommand.ArpeggioUp => editor.SetArpeggio(ArpeggioKind.Up),
+        EditorCommand.ArpeggioDown => editor.SetArpeggio(ArpeggioKind.Down),
+        EditorCommand.NonArpeggio => editor.SetArpeggio(ArpeggioKind.NonArpeggio),
+        EditorCommand.AccidentalMarkSharp => editor.SetAccidentalMark(1),
+        EditorCommand.AccidentalMarkFlat => editor.SetAccidentalMark(-1),
+        EditorCommand.AccidentalMarkNatural => editor.SetAccidentalMark(0),
+        EditorCommand.AccidentalMarkOff => editor.SetAccidentalMark(null),
+        EditorCommand.CueNotes => editor.ToggleCue(),
+        EditorCommand.TimeAbbreviation => editor.ToggleTimeAbbreviation(),
+        EditorCommand.BarlineFermata => editor.ToggleBarlineFermata(),
         EditorCommand.BreakBeam or EditorCommand.GraceNote or EditorCommand.HideEntry =>
             EditResult.Refused($"'{KeyMap.Info(command).Name}'은(는) 아직 지원하지 않습니다."),
         _ => null,
