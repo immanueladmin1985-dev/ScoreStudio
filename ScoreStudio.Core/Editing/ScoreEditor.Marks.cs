@@ -43,6 +43,18 @@ public sealed partial class ScoreEditor
         Articulation.Open => "개방(호른 등의 열림)",
         Articulation.Stopped => "막음(+)",
         Articulation.SnapPizzicato => "스냅 피치카토",
+        Articulation.Stress => "강세",
+        Articulation.Unstress => "약세",
+        Articulation.SoftAccent => "부드러운 악센트",
+        Articulation.BreathMark => "숨표",
+        Articulation.Caesura => "중간 휴지(케수라)",
+        Articulation.Doit => "도이트(올려 끌기)",
+        Articulation.Falloff => "폴오프(내려 끌기)",
+        Articulation.Plop => "플롭(위에서 떨어지기)",
+        Articulation.Scoop => "스쿱(아래에서 올리기)",
+        Articulation.Schleifer => "슐라이퍼",
+        Articulation.Haydn => "하이든 턴",
+        Articulation.Shake => "셰이크",
         _ => "페르마타",
     };
 

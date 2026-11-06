@@ -799,6 +799,7 @@ public static partial class ScoreLayoutEngine
             if (info.RepeatEnd) kind = BarlineKind.EndRepeat;
             if (k + 1 < plan.MeasureCount && measures[plan.Measures[k + 1].Index].RepeatStart) kind |= BarlineKind.StartRepeat;
             DrawBarline(items, project, slots, top, measureRight, kind, sp);
+            DrawBarlineFermatas(items, project, slots, staffTops, index, measureRight, sp);
             measureLayouts.Add(new MeasureLayout(index, measureLeft, measureRight, info.ShowsTimeSignature));
             x = measureRight;
         }
@@ -1352,6 +1353,18 @@ public static partial class ScoreLayoutEngine
 
             default:
                 return right;
+        }
+    }
+
+    /// <summary>A fermata over a measure's closing barline (docs/FINALE_MARKS_3.md), above the top staff of each part that has one.</summary>
+    private static void DrawBarlineFermatas(List<DrawItem> items, ScoreProject project, List<StaffSlot> slots, double[] staffTops, int measure, double x, double sp)
+    {
+        var (glyph, width, _) = Smufl.Articulation(Articulation.Fermata, true);
+        for (var i = 0; i < slots.Count; i++)
+        {
+            var part = project.Parts[slots[i].PartIndex];
+            if (slots[i].StaffIndex != 0 || measure >= part.Measures.Count || !part.Measures[measure].BarlineFermata) continue;
+            items.Add(new GlyphItem(glyph, x - width * sp / 2, staffTops[i] - 0.5 * sp, 4 * sp));
         }
     }
 

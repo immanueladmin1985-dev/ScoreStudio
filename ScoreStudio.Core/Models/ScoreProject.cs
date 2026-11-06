@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 24;
+    public const int CurrentSchemaVersion = 25;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -234,6 +234,10 @@ public enum NoteheadShape
 public sealed class ScoreMeasure
 {
     public int Number { get; set; } = 1;
+
+    /// <summary>A fermata over the measure's closing barline (docs/FINALE_MARKS_3.md).</summary>
+    public bool BarlineFermata { get; set; }
+
     public int Numerator { get; set; } = 4;
     public int Denominator { get; set; } = 4;
 
@@ -536,6 +540,28 @@ public enum Articulation
     Stopped,
 
     SnapPizzicato,
+
+    // More marks (docs/FINALE_MARKS_3.md). Stress, unstress and soft accent sit with the accents.
+    Stress,
+    Unstress,
+    SoftAccent,
+
+    /// <summary>A breath mark (comma) after the note, above the staff.</summary>
+    BreathMark,
+
+    /// <summary>A caesura (railroad tracks) after the note, across the top of the staff.</summary>
+    Caesura,
+
+    // Jazz articulations beside the notehead: doit and falloff after it, plop and scoop before it.
+    Doit,
+    Falloff,
+    Plop,
+    Scoop,
+
+    // More ornaments above the staff.
+    Schleifer,
+    Haydn,
+    Shake,
 }
 
 /// <summary>How a chord is rolled. Stored in project files by name.</summary>
@@ -738,6 +764,21 @@ public sealed class ScoreEvent
     public string Instrument { get; set; } = "";
 
     public NoteheadShape Notehead { get; set; }
+
+    /// <summary>Fingering numbers on this note, e.g. "3", or "3" and "1" for a substitution (docs/FINALE_MARKS_3.md).</summary>
+    public List<string> Fingerings { get; set; } = new();
+
+    /// <summary>Whether the fingering goes above (true) or below (false) the chord; null puts it above.</summary>
+    public bool? FingeringAbove { get; set; }
+
+    /// <summary>
+    /// An accidental shown above the note, for its ornament (a trill to a sharp) or as an editorial accidental: the
+    /// alteration −2…2, or null for none.
+    /// </summary>
+    public int? AccidentalMark { get; set; }
+
+    /// <summary>An unmeasured tremolo (buzz roll): a "z" through the stem.</summary>
+    public bool BuzzRoll { get; set; }
 }
 
 /// <summary>A grace note: a small note without time of its own, before (or after) the note that carries it.</summary>

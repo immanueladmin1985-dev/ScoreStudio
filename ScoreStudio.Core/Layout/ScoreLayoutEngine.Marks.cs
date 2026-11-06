@@ -47,7 +47,7 @@ public static partial class ScoreLayoutEngine
         for (var i = 0; i < placed.Count; i++)
         {
             var chord = placed[i];
-            if (chord.Chord.Articulations.Count == 0) continue;
+            if (chord.Chord is { Articulations.Count: 0, Fingerings.Count: 0, AccidentalMark: null }) continue;
             var (top, bottom) = DrawChordArticulations(items, chord.Chord, chord.X, chord.Top, chord.Bottom, staffTops[chord.Slot], sp);
             placed[i] = chord with { Top = Math.Min(chord.Top, top), Bottom = Math.Max(chord.Bottom, bottom) };
         }
@@ -86,6 +86,12 @@ public static partial class ScoreLayoutEngine
     /// </summary>
     private static void DrawTremolos(List<DrawItem> items, List<PlacedChord> placed, double[] staffTops, double sp)
     {
+        foreach (var chord in placed.Where(p => p.Chord.BuzzRoll))
+        {
+            var (x, near, tip) = StemOf(chord, staffTops[chord.Slot], sp);
+            items.Add(new GlyphItem(Smufl.BuzzRoll, x, near + (tip - near) * 0.6, 4 * sp));
+        }
+
         foreach (var chord in placed.Where(p => p.Chord.Tremolo > 0))
         {
             // A little nearer the tip than the head, so the strokes stay clear of the notehead.
@@ -150,14 +156,18 @@ public static partial class ScoreLayoutEngine
             edge = StaffY(staffTop, outer, sp) + (above ? -0.5 : 0.5) * sp;
         }
 
-        var order = new[] { Articulation.Staccato, Articulation.Staccatissimo, Articulation.Tenuto, Articulation.Accent, Articulation.Marcato };
+        var order = new[]
+        {
+            Articulation.Staccato, Articulation.Staccatissimo, Articulation.Tenuto, Articulation.Accent, Articulation.Marcato,
+            Articulation.Stress, Articulation.Unstress, Articulation.SoftAccent,
+        };
         foreach (var articulation in order.Where(chord.Articulations.Contains))
         {
             var (glyph, glyphWidth, height) = Smufl.Articulation(articulation, above);
             var h = height * sp;
             var near = edge + (above ? -MarkGap : MarkGap) * sp;
             double glyphTop;
-            if (articulation is Articulation.Accent or Articulation.Marcato)
+            if (articulation is Articulation.Accent or Articulation.Marcato or Articulation.Stress or Articulation.Unstress or Articulation.SoftAccent)
             {
                 glyphTop = above ? Math.Min(near, staffTop - MarkGap * sp) - h : Math.Max(near, staffBottom + MarkGap * sp);
             }
@@ -189,6 +199,7 @@ public static partial class ScoreLayoutEngine
         {
             Articulation.Harmonic, Articulation.Open, Articulation.Stopped, Articulation.SnapPizzicato, Articulation.UpBow, Articulation.DownBow,
             Articulation.Trill, Articulation.Mordent, Articulation.InvertedMordent, Articulation.Turn, Articulation.InvertedTurn,
+            Articulation.Schleifer, Articulation.Haydn, Articulation.Shake,
         };
         foreach (var ornament in ornaments.Where(chord.Articulations.Contains))
         {
@@ -197,6 +208,22 @@ public static partial class ScoreLayoutEngine
             items.Add(new GlyphItem(glyph, center - glyphWidth * sp / 2, baseline, 4 * sp));
             outside = outsideAbove ? baseline - height * sp - 0.3 * sp : baseline + 0.3 * sp;
         }
+
+        // An accidental for the ornament (or an editorial one) above them, smaller.
+        if (chord.AccidentalMark is { } alter && !chord.IsRest)
+        {
+            const double scale = 0.7;
+            var glyphWidth = Smufl.AccidentalWidth(alter) * scale;
+            var baseline = outsideAbove ? outside - 0.4 * sp : outside + 1.4 * scale * sp;
+            items.Add(new GlyphItem(Smufl.Accidental(alter), center - glyphWidth * sp / 2, baseline, 4 * sp * scale));
+            outside = outsideAbove ? baseline - 1.8 * scale * sp : baseline + 0.8 * sp;
+        }
+
+        if (!chord.IsRest)
+            DrawSideMarks(items, chord, x, staffTop, sp);
+
+        if (chord.Fingerings.Count > 0 && !chord.IsRest)
+            (top, bottom) = DrawFingerings(items, chord, center, top, bottom, staffTop, sp);
 
         if (chord.Articulations.Contains(Articulation.Fermata))
         {
@@ -208,6 +235,75 @@ public static partial class ScoreLayoutEngine
         }
 
         return (top, bottom);
+    }
+
+    private const double FingeringTextSize = 1.9;
+
+    /// <summary>
+    /// Fingerings (docs/FINALE_MARKS_3.md): a column of numbers over the chord (or under it when placed below), the top
+    /// note's on top, centred on the noteheads. Returns the chord's new reach.
+    /// </summary>
+    private static (double Top, double Bottom) DrawFingerings(List<DrawItem> items, PreparedChord chord, double center, double top, double bottom, double staffTop, double sp)
+    {
+        var size = FingeringTextSize * sp;
+        var line = 1.5 * sp;
+        var above = chord.FingeringAbove ?? true;
+        var ordered = chord.Fingerings.OrderBy(f => f.Position).ToList();
+        if (above)
+        {
+            // The highest note's number goes on top: the lowest one's is placed first, nearest the chord.
+            var baseline = Math.Min(top, staffTop + 4 * sp) - 0.3 * sp;
+            foreach (var (_, text) in ordered)
+            {
+                items.Add(new TextItem(text, center, baseline, size, TextAnchor.Middle, Serif: true));
+                top = baseline - 0.75 * size;
+                baseline -= line;
+            }
+        }
+        else
+        {
+            var baseline = Math.Max(bottom, staffTop) + 0.3 * sp + 0.75 * size;
+            foreach (var (_, text) in Enumerable.Reverse(ordered))
+            {
+                items.Add(new TextItem(text, center, baseline, size, TextAnchor.Middle, Serif: true));
+                bottom = baseline + 0.2 * sp;
+                baseline += line;
+            }
+        }
+
+        return (top, bottom);
+    }
+
+    /// <summary>
+    /// Marks beside a chord rather than over it: a breath mark or caesura after it at the top of the staff; a doit or
+    /// falloff right of its top notehead, a plop or scoop left of it.
+    /// </summary>
+    private static void DrawSideMarks(List<DrawItem> items, PreparedChord chord, double x, double staffTop, double sp)
+    {
+        var head = Smufl.NoteheadWidth(chord.Value.Type) * sp;
+        var right = x + head * (chord.Notes.Any(n => n.Side > 0) ? 2 : 1);
+        var topY = StaffY(staffTop, chord.Notes.Max(n => n.Position), sp);
+        foreach (var mark in chord.Articulations)
+        {
+            var (glyph, width, _) = Smufl.Articulation(mark, true);
+            switch (mark)
+            {
+                case Articulation.BreathMark:
+                    // Above the top line, a little after the chord.
+                    items.Add(new GlyphItem(glyph, right + 0.8 * sp, Math.Min(staffTop, topY - 0.8 * sp) - 0.3 * sp, 4 * sp));
+                    break;
+                case Articulation.Caesura:
+                    // Across the top two lines.
+                    items.Add(new GlyphItem(glyph, right + 0.6 * sp, staffTop + 1.0 * sp, 4 * sp));
+                    break;
+                case Articulation.Doit or Articulation.Falloff:
+                    items.Add(new GlyphItem(glyph, right + 0.3 * sp, topY, 4 * sp));
+                    break;
+                case Articulation.Plop or Articulation.Scoop:
+                    items.Add(new GlyphItem(glyph, x - (width + 0.3) * sp, topY, 4 * sp));
+                    break;
+            }
+        }
     }
 
     /// <summary>

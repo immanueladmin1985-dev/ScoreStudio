@@ -25,6 +25,15 @@ public static partial class MusicXmlExporter
         Articulation.Accent => "accent",
         Articulation.Marcato => "strong-accent",
         Articulation.Tenuto => "tenuto",
+        Articulation.Stress => "stress",
+        Articulation.Unstress => "unstress",
+        Articulation.SoftAccent => "soft-accent",
+        Articulation.BreathMark => "breath-mark",
+        Articulation.Caesura => "caesura",
+        Articulation.Doit => "doit",
+        Articulation.Falloff => "falloff",
+        Articulation.Plop => "plop",
+        Articulation.Scoop => "scoop",
         _ => null,
     };
 
@@ -48,7 +57,20 @@ public static partial class MusicXmlExporter
         Articulation.InvertedTurn => "inverted-turn",
         Articulation.Mordent => "mordent",
         Articulation.InvertedMordent => "inverted-mordent",
+        Articulation.Schleifer => "schleifer",
+        Articulation.Haydn => "haydn",
+        Articulation.Shake => "shake",
         _ => null,
+    };
+
+    /// <summary>The value of an &lt;accidental-mark&gt; for an alteration −2…2.</summary>
+    private static string AccidentalMarkName(int alter) => alter switch
+    {
+        2 => "double-sharp",
+        1 => "sharp",
+        0 => "natural",
+        -1 => "flat",
+        _ => "flat-flat",
     };
 
     /// <summary>
@@ -501,10 +523,11 @@ public static partial class MusicXmlExporter
         {
             var isLast = index == _part.Measures.Count - 1;
             var volta = _voltaEnds.GetValueOrDefault(index);
-            if (!measure.RepeatEnd && volta is null && !isLast) return;
+            if (!measure.RepeatEnd && volta is null && !isLast && !measure.BarlineFermata) return;
 
             var barline = new XElement("barline", new XAttribute("location", "right"),
                 new XElement("bar-style", measure.RepeatEnd || isLast ? "light-heavy" : "regular"));
+            if (measure.BarlineFermata) barline.Add(new XElement("fermata", new XAttribute("type", "upright")));
             if (volta is not null)
                 barline.Add(new XElement("ending", new XAttribute("number", volta.Numbers), new XAttribute("type", volta.OpenEnd ? "discontinue" : "stop")));
             if (measure.RepeatEnd)
@@ -955,9 +978,24 @@ public static partial class MusicXmlExporter
             if (e.Tremolo > 0) ornaments.Add(new XElement("tremolo", new XAttribute("type", "single"), e.Tremolo));
             if (!isChordMember && e.TremoloToNext > 0) ornaments.Add(new XElement("tremolo", new XAttribute("type", "start"), e.TremoloToNext));
             if (!isChordMember && _tremoloStops.TryGetValue(e, out var strokes)) ornaments.Add(new XElement("tremolo", new XAttribute("type", "stop"), strokes));
+            if (e.BuzzRoll) ornaments.Add(new XElement("tremolo", new XAttribute("type", "unmeasured"), 0));
             if (!isChordMember && _ornamentMarks.TryGetValue(e, out var lineMarks)) ornaments.Add(lineMarks);
+            // An accidental mark goes with the note's ornaments when it has some, else stands alone (editorial).
+            if (e.AccidentalMark is { } markAlter)
+            {
+                if (ornaments.HasElements) ornaments.Add(new XElement("accidental-mark", AccidentalMarkName(markAlter)));
+                else notations.Add(new XElement("accidental-mark", AccidentalMarkName(markAlter)));
+            }
+
             if (ornaments.HasElements) notations.Add(ornaments);
             var technical = new XElement("technical", e.Articulations.Distinct().Select(TechnicalElement).OfType<string>().Select(n => new XElement(n)));
+            foreach (var fingering in e.Fingerings)
+            {
+                var element = new XElement("fingering", fingering);
+                if (e.FingeringAbove is { } fingeringAbove) element.Add(new XAttribute("placement", fingeringAbove ? "above" : "below"));
+                technical.Add(element);
+            }
+
             if (technical.HasElements) notations.Add(technical);
 
             switch (e.Arpeggio)

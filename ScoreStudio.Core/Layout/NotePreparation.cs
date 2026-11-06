@@ -77,6 +77,18 @@ internal sealed class PreparedChord
     /// <summary>Two-note tremolo strokes to the next chord of the voice; 0 for none.</summary>
     public int TremoloToNext { get; set; }
 
+    /// <summary>Fingerings of the chord's notes (docs/FINALE_MARKS_3.md): each note's staff position and its numbers.</summary>
+    public IReadOnlyList<(int Position, string Text)> Fingerings { get; set; } = Array.Empty<(int, string)>();
+
+    /// <summary>Whether the fingerings go above (null: above).</summary>
+    public bool? FingeringAbove { get; set; }
+
+    /// <summary>An accidental shown above the chord (for its ornament, or editorial), or null.</summary>
+    public int? AccidentalMark { get; set; }
+
+    /// <summary>An unmeasured tremolo: a "z" through the stem.</summary>
+    public bool BuzzRoll { get; set; }
+
     /// <summary>
     /// Shift to the right of the onset, in staff spaces: one of two voices moves aside when their notes would touch (a
     /// second, or a unison that cannot share a notehead).
@@ -244,6 +256,10 @@ internal static class NotePreparation
         public ArpeggioKind Arpeggio { get; init; }
         public int Tremolo { get; init; }
         public int TremoloToNext { get; init; }
+        public List<(int Position, string Text)> Fingerings { get; init; } = new();
+        public bool? FingeringAbove { get; init; }
+        public int? AccidentalMark { get; init; }
+        public bool BuzzRoll { get; init; }
         public required IReadOnlyList<BeamType> Beams { get; set; }
 
         /// <summary>The source's stem direction for the chord, if it gives one.</summary>
@@ -305,6 +321,7 @@ internal static class NotePreparation
                 }
 
                 var notes = new List<(int Position, int? Accidental, int Midi, bool Tie, NoteheadShape Head)>();
+                var fingerings = new List<(int Position, string Text)>();
                 foreach (var note in chordEvents.Where(e => e.Kind == "Note").OrderBy(e => e.MidiPitch))
                 {
                     // Under an octave line the note is written one or two octaves away from its sounding pitch.
@@ -332,6 +349,7 @@ internal static class NotePreparation
                     if (note.TieToNext) tiedFromPrevious.Add(tieKey);
                     else tiedFromPrevious.Remove(tieKey);
                     notes.Add((position, accidental, note.MidiPitch, note.TieToNext, note.Notehead));
+                    if (note.Fingerings.Count > 0) fingerings.Add((position, string.Join("-", note.Fingerings)));
                 }
 
                 if (notes.Count == 0)
@@ -347,6 +365,8 @@ internal static class NotePreparation
                     Articulations = chordEvents.SelectMany(e => e.Articulations).Distinct().OrderBy(a => a).ToList(),
                     Graces = PrepareGraces(chordEvents.FirstOrDefault(e => e.GraceNotes.Count > 0) ?? first, measure, clef),
                     LetRing = chordEvents.Any(e => e.LetRing),
+                    Fingerings = fingerings, FingeringAbove = chordEvents.Select(e => e.FingeringAbove).FirstOrDefault(f => f is not null),
+                    AccidentalMark = chordEvents.Select(e => e.AccidentalMark).FirstOrDefault(a => a is not null), BuzzRoll = chordEvents.Any(e => e.BuzzRoll),
                     Arpeggio = chordEvents.Select(e => e.Arpeggio).FirstOrDefault(a => a != ArpeggioKind.None), Tremolo = chordEvents.Max(e => e.Tremolo), TremoloToNext = tremoloToNext,
                 });
             }
@@ -359,6 +379,11 @@ internal static class NotePreparation
                 built[chord] = BuildChord(partIndex, staff, chord.First.Voice, Start(chord.First), Duration(chord.First), chord.Value, stemUp, chord.Role,
                     chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds, chord.Articulations, chord.Graces, chord.Arpeggio);
                 (built[chord].LetRing, built[chord].Tremolo, built[chord].TremoloToNext) = (chord.LetRing, chord.Tremolo, chord.TremoloToNext);
+                (built[chord].Fingerings, built[chord].FingeringAbove, built[chord].AccidentalMark, built[chord].BuzzRoll) =
+                    (chord.Fingerings, chord.FingeringAbove, chord.AccidentalMark, chord.BuzzRoll);
+                // Room after the chord for a breath mark or caesura, and for a doit or falloff.
+                if (chord.Articulations.Any(a => a is Articulation.BreathMark or Articulation.Caesura or Articulation.Doit or Articulation.Falloff))
+                    built[chord].RightExtent += 1.8;
                 // Room for the bars of a two-note tremolo between the two chords.
                 if (chord.TremoloToNext > 0) built[chord].RightExtent += 2.5;
                 result.Add(built[chord]);

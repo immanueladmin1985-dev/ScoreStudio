@@ -498,6 +498,25 @@ public sealed class ProjectFileServiceTests : IDisposable
         Assert.Equal((1, 1, 2), (change.MeasureOffset, change.PositionNumerator, change.PositionDenominator));
     }
 
+    [Fact]
+    public void Load_Version24File_HasNoFingerings_AndFingeringsSurviveSaveAndReopen()
+    {
+        var old = ProjectFileService.Parse("""{ "SchemaVersion": 24, "Parts": [ { "Measures": [ { "Events": [ {} ] } ] } ] }""").Parts[0].Measures[0];
+        Assert.Equal((0, (bool?)null, (int?)null, false, false), (old.Events[0].Fingerings.Count, old.Events[0].FingeringAbove, old.Events[0].AccidentalMark, old.Events[0].BuzzRoll, old.BarlineFermata));
+
+        var project = ScoreProject.CreateNew();
+        var measure = project.Parts[0].Measures[0];
+        measure.BarlineFermata = true;
+        measure.Events.Add(new ScoreEvent { Fingerings = { "3", "1" }, FingeringAbove = false, AccidentalMark = -2, BuzzRoll = true, Articulations = { Articulation.BreathMark } });
+        var path = PathFor("fingering.scoreproj");
+        ProjectFileService.Save(path, project);
+
+        var reopened = ProjectFileService.Load(path).Parts[0].Measures[0];
+        var note = reopened.Events.Single();
+        Assert.Equal(("3,1", (bool?)false, (int?)-2, true, true), (string.Join(",", note.Fingerings), note.FingeringAbove, note.AccidentalMark, note.BuzzRoll, reopened.BarlineFermata));
+        Assert.Equal(new[] { Articulation.BreathMark }, note.Articulations);
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -592,6 +611,9 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 24, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Pedal", "PedalChanges": [ { "MeasureOffset": 1 } ] } ] } ] } ] }""", "페달" },
         { """{ "SchemaVersion": 24, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Pedal", "PedalChanges": [ { "PositionDenominator": 0 } ] } ] } ] } ] }""", "페달" },
         { """{ "SchemaVersion": 24, "Parts": [ { "Measures": [ { "Lines": [ { "Kind": "Pedal", "PedalChanges": [ null ] } ] } ] } ] }""", "페달" },
+        { """{ "SchemaVersion": 25, "Parts": [ { "Measures": [ { "Events": [ { "Fingerings": [ "" ] } ] } ] } ] }""", "운지 번호" },
+        { """{ "SchemaVersion": 25, "Parts": [ { "Measures": [ { "Events": [ { "Fingerings": [ "12345678901" ] } ] } ] } ] }""", "운지 번호" },
+        { """{ "SchemaVersion": 25, "Parts": [ { "Measures": [ { "Events": [ { "AccidentalMark": 3 } ] } ] } ] }""", "임시표 기호" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Tablature" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };

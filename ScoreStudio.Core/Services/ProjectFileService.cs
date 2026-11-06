@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs).
+        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs; version 24: fingerings, accidental marks, buzz rolls, barline fermatas).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -339,6 +339,9 @@ public static class ProjectFileService
                     if (item.Tremolo is < 0 or > 4 || item.TremoloToNext is < 0 or > 4)
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 트레몰로 정보가 올바르지 않습니다.");
                     item.Instrument ??= "";
+                    item.Fingerings ??= new List<string>();
+                    if (item.Fingerings.Any(f => string.IsNullOrWhiteSpace(f) || f.Length > 10 || f.Any(char.IsControl)) || item.AccidentalMark is < -2 or > 2)
+                        throw Corrupt($"{where}의 {e + 1}번째 음표의 운지 번호·임시표 기호 정보가 올바르지 않습니다.");
                     if (!Enum.IsDefined(item.Notehead) || (item.Instrument.Length > 0 && !instrumentIds.Contains(item.Instrument)))
                         throw Corrupt($"{where}의 {e + 1}번째 음표의 음표머리·악기 정보가 올바르지 않습니다.");
 

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- ScoreStudio sample: fingerings, more articulations and ornaments, accidental marks, a buzz roll and a fermata on a barline, as Finale writes them (docs/FINALE_MARKS_3.md). -->
+<score-partwise version="4.0">
+  <work><work-title>더 많은 Finale 기호</work-title></work>
+  <part-list><score-part id="P1"><part-name>피아노</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><technical><fingering placement="above">1</fingering></technical></notations></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><technical><fingering>1</fingering></technical></notations></note>
+      <note><chord/><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><technical><fingering>2</fingering></technical></notations></note>
+      <note><chord/><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><technical><fingering>5</fingering></technical></notations></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><stress/></articulations></notations></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><unstress/></articulations></notations></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><soft-accent/></articulations></notations></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><breath-mark/></articulations></notations></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><caesura/></articulations></notations></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><doit/></articulations></notations></note>
+    </measure>
+    <measure number="3">
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><falloff/></articulations></notations></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><plop/></articulations></notations></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><articulations><scoop/></articulations></notations></note>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><schleifer/></ornaments></notations></note>
+    </measure>
+    <measure number="4">
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><haydn/></ornaments></notations></note>
+      <note><pitch><step>A</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><shake/></ornaments></notations></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><trill-mark/><accidental-mark>sharp</accidental-mark></ornaments></notations></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>
+        <notations><ornaments><tremolo type="unmeasured">0</tremolo></ornaments></notations></note>
+      <barline location="right"><bar-style>regular</bar-style><fermata type="upright"/></barline>
+    </measure>
+    <measure number="5">
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type>
+        <notations><technical><fingering placement="below">4</fingering><fingering placement="below">1</fingering></technical></notations></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type>
+        <accidental>flat</accidental>
+        <notations><accidental-mark>flat</accidental-mark></notations></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

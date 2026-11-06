@@ -14,6 +14,7 @@ public static class Smufl
     public const char FClef = '\uE062';
     public const char PercussionClef = '\uE069'; // unpitchedPercussionClef1
     public const char Segno = '\uE047';
+    public const char BuzzRoll = '\uE22A'; // centred on its origin
     public const char Coda = '\uE048';
     public const char PedalPed = '\uE650';  // keyboardPedalPed, "Ped."; glyphs stand on their baseline
     public const char PedalUp = '\uE655';   // keyboardPedalUp, "*"
@@ -281,6 +282,18 @@ public static class Smufl
         Models.Articulation.Open => ('\uE5E7', 1.22, 1.216),
         Models.Articulation.Stopped => ('\uE5E5', 1.088, 1.088),
         Models.Articulation.SnapPizzicato => ('\uE631', 0.8, 1.2),
+        Models.Articulation.Stress => (above ? '\uE4B6' : '\uE4B7', 0.94, 0.948),
+        Models.Articulation.Unstress => (above ? '\uE4B8' : '\uE4B9', 1.528, 0.828),
+        Models.Articulation.SoftAccent => (above ? '\uED40' : '\uED41', 2.832, 0.98),
+        Models.Articulation.BreathMark => ('\uE4CE', 0.612, 1.0),
+        Models.Articulation.Caesura => ('\uE4D1', 1.54, 2.128),
+        Models.Articulation.Doit => ('\uE5D5', 1.96, 1.384),
+        Models.Articulation.Falloff => ('\uE5D7', 1.172, 1.38),
+        Models.Articulation.Plop => ('\uE5E0', 1.172, 1.488),
+        Models.Articulation.Scoop => ('\uE5D0', 1.28, 1.492),
+        Models.Articulation.Schleifer => ('\uE587', 4.572, 2.64),
+        Models.Articulation.Haydn => ('\uE56F', 2.0, 0.852),
+        Models.Articulation.Shake => ('\uE582', 1.132, 1.124),
         _ => (above ? '\uE4C0' : '\uE4C1', 2.42, 1.33),
     };
 

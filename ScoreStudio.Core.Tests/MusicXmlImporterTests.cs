@@ -278,6 +278,38 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void Fingerings_MoreMarks_AccidentalMarks_BuzzRolls_AndBarlineFermatas_AreKept()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("finale-marks-3.musicxml"));
+        Assert.Empty(result.Warnings);
+        var m = result.Project.Parts[0].Measures;
+
+        Assert.Equal(new[] { "1 above", "1 ", "2 ", "5 " }, m[0].Events.Take(4).Select(e => $"{string.Join("-", e.Fingerings)} {(e.FingeringAbove == true ? "above" : "")}"));
+        Assert.Equal(new[] { "4", "1" }, m[4].Events[0].Fingerings);
+        Assert.False(m[4].Events[0].FingeringAbove);
+
+        Assert.Equal(new[] { Articulation.Stress, Articulation.Unstress, Articulation.SoftAccent, Articulation.BreathMark, Articulation.Caesura, Articulation.Doit,
+                Articulation.Falloff, Articulation.Plop, Articulation.Scoop, Articulation.Schleifer, Articulation.Haydn, Articulation.Shake, Articulation.Trill },
+            m.SelectMany(x => x.Events).SelectMany(e => e.Articulations));
+        Assert.Equal(1, m[3].Events[2].AccidentalMark);   // the trill's sharp
+        Assert.Equal(-1, m[4].Events[1].AccidentalMark);  // an editorial flat
+        Assert.True(m[3].Events[3].BuzzRoll);
+        Assert.Equal(new[] { false, false, false, true, false }, m.Select(x => x.BarlineFermata));
+    }
+
+    [Fact]
+    public void FermataOnALeftBarline_BelongsToTheMeasureBefore()
+    {
+        var xml = OneMeasure("", "").Replace("</measure></part>", """
+            </measure><measure number="2"><barline location="left"><fermata/></barline>
+            <note><rest/><duration>4</duration><voice>1</voice><type>whole</type></note></measure></part>
+            """);
+        var result = MusicXmlImporter.ImportXml(xml, "페르마타");
+        Assert.Empty(result.Warnings);
+        Assert.Equal(new[] { true, false }, result.Project.Parts[0].Measures.Select(x => x.BarlineFermata));
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -355,8 +387,8 @@ public sealed class MusicXmlImporterTests : IDisposable
             new Dictionary<string, int>
             {
                 ["지시 기호 <damp>"] = 1,
-                ["장식음 기호 <schleifer>"] = 1,
-                ["기타 아티큘레이션(숨표, 중간 휴지 등)"] = 1,
+                ["장식음 기호 <vertical-turn>"] = 1,
+                ["아티큘레이션 <other-articulation>"] = 1,
             },
             warnings);
         Assert.Equal("플루트 1마디", result.Warnings.First(w => w.Message == "지시 기호 <damp>").FirstLocation);
@@ -990,6 +1022,7 @@ public sealed class MusicXmlImporterTests : IDisposable
     [InlineData("lyrics-ties.musicxml")]
     [InlineData("percussion.musicxml")]
     [InlineData("finale-marks-2.musicxml")]
+    [InlineData("finale-marks-3.musicxml")]
     [InlineData("pedal-segno-coda.musicxml")]
     public void ImportedProject_SurvivesSaveAndReopen(string file)
     {

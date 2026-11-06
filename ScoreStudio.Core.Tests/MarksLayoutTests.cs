@@ -342,4 +342,49 @@ public sealed class MarksLayoutTests
         Assert.Single(hooks, h => h.Y1 < systems[1].Top); // the start, in the first system
         Assert.Single(hooks, h => h.Y1 > systems[1].Top); // the end, in the second
     }
+
+    [Fact]
+    public void Fingerings_StackOverTheChord_TopNoteOnTop_OrUnderIt()
+    {
+        var low = Note("E4", 64, 0, 4);
+        low.Fingerings.Add("1");
+        var high = Note("C5", 72, 0, 4);
+        high.Fingerings.Add("5");
+        var (page, top) = Layout(Score(1, low, high));
+
+        var numbers = page.Items.OfType<TextItem>().Where(t => t.Text is "1" or "5").ToDictionary(t => t.Text);
+        Assert.True(numbers["5"].Y < numbers["1"].Y, "the top note's number is on top");
+        Assert.True(numbers["1"].Y < StaffYOf(top, 5) - 0.5 * Sp, "over the chord"); // C5 is the third space
+
+        var under = Note("A4", 69, 0, 4);
+        (under.Fingerings, under.FingeringAbove) = (new List<string> { "4", "1" }, false);
+        (page, top) = Layout(Score(1, under));
+        var text = Assert.Single(page.Items.OfType<TextItem>(), t => t.Text == "4-1");
+        Assert.True(text.Y > top + 4 * Sp, "under the staff");
+    }
+
+    private static double StaffYOf(double top, int position) => top + (8 - position) * Sp / 2;
+
+    [Fact]
+    public void BreathMark_GoesAfterTheChord_AboveTheStaff_AndABarlineFermataOverTheBarline()
+    {
+        var breath = Note("G4", 67, 0, 2);
+        breath.Articulations.Add(Articulation.BreathMark);
+        var project = Score(2, breath);
+        project.Parts[0].Measures[0].BarlineFermata = true;
+        var buzz = Note("B4", 71, 0, 4);
+        buzz.BuzzRoll = true;
+        project.Parts[0].Measures[1].Events.Add(buzz);
+        var (page, top) = Layout(project);
+
+        var head = Assert.Single(page.Items.OfType<GlyphItem>(), g => g.Glyph == Smufl.NoteheadHalf);
+        var comma = Glyph(page, Smufl.Articulation(Articulation.BreathMark, true).Glyph);
+        Assert.True(comma.X > head.X + Smufl.NoteheadWidth(NoteType.Half) * Sp && comma.Y <= top, "after the note, on or above the top line");
+
+        var fermata = Glyph(page, Smufl.Articulation(Articulation.Fermata, true).Glyph);
+        var barline = page.Items.OfType<LineItem>().Where(l => l.X1 == l.X2 && l.Thickness >= Smufl.ThinBarlineThickness * Sp - 1e-9).OrderBy(l => l.X1).First();
+        Assert.Equal(barline.X1, fermata.X + Smufl.Articulation(Articulation.Fermata, true).Width * Sp / 2, 0);
+        Assert.True(fermata.Y < top, "above the staff");
+        Glyph(page, Smufl.BuzzRoll);
+    }
 }

@@ -458,6 +458,9 @@ public static class MusicXmlImporter
         /// <summary>The part's instruments, kept only for a drum set or unpitched sounds (docs/PERCUSSION.md).</summary>
         private readonly List<ScoreInstrument> _instruments;
 
+        /// <summary>The measure read before the current one, or null in the first.</summary>
+        private ScoreMeasure? _previousMeasure;
+
         /// <summary>Source instrument ids and the ids they are kept under.</summary>
         private readonly Dictionary<string, string> _instrumentIds = new();
 
@@ -483,6 +486,7 @@ public static class MusicXmlImporter
             var measures = new List<ScoreMeasure>();
             foreach (var measureElement in part.Elements("measure"))
             {
+                _previousMeasure = measures.LastOrDefault();
                 measures.Add(ReadMeasure(measureElement, measures.Count));
                 _firstMeasureDone = true;
             }
@@ -1355,6 +1359,26 @@ public static class MusicXmlImporter
             ["strong-accent"] = new[] { Articulation.Marcato },
             ["tenuto"] = new[] { Articulation.Tenuto },
             ["detached-legato"] = new[] { Articulation.Tenuto, Articulation.Staccato },
+            ["stress"] = new[] { Articulation.Stress },
+            ["unstress"] = new[] { Articulation.Unstress },
+            ["soft-accent"] = new[] { Articulation.SoftAccent },
+            ["breath-mark"] = new[] { Articulation.BreathMark },
+            ["caesura"] = new[] { Articulation.Caesura },
+            ["doit"] = new[] { Articulation.Doit },
+            ["falloff"] = new[] { Articulation.Falloff },
+            ["plop"] = new[] { Articulation.Plop },
+            ["scoop"] = new[] { Articulation.Scoop },
+        };
+
+        /// <summary>The alteration of an &lt;accidental-mark&gt; (docs/FINALE_MARKS_3.md), or null for one not kept.</summary>
+        private static int? AccidentalMarkAlter(XElement mark) => mark.Value.Trim() switch
+        {
+            "sharp" => 1,
+            "flat" => -1,
+            "natural" => 0,
+            "double-sharp" or "sharp-sharp" => 2,
+            "flat-flat" => -2,
+            _ => null,
         };
 
         /// <summary>
@@ -1374,17 +1398,31 @@ public static class MusicXmlImporter
                 }
                 else
                 {
-                    Warn("기타 아티큘레이션(숨표, 중간 휴지 등)");
+                    Warn($"아티큘레이션 <{mark.Name.LocalName}>");
                 }
             }
 
             if (notations.Any(n => n.Name == "fermata")) articulations.Add(Articulation.Fermata);
+            if (notations.FirstOrDefault(n => n.Name == "accidental-mark") is { } accidentalMark && AccidentalMarkAlter(accidentalMark) is { } markAlter)
+                item.AccidentalMark = markAlter;
             foreach (var ornament in notations.Where(n => n.Name == "ornaments").SelectMany(n => n.Elements()))
                 ReadOrnament(ornament, measure, item, articulations);
             foreach (var technical in notations.Where(n => n.Name == "technical").SelectMany(n => n.Elements()))
             {
-                if (TechnicalNames.TryGetValue(technical.Name.LocalName, out var mark)) articulations.Add(mark);
-                else Warn(technical.Name == "fingering" ? "운지 번호" : $"주법 기호 <{technical.Name.LocalName}>");
+                if (TechnicalNames.TryGetValue(technical.Name.LocalName, out var mark))
+                {
+                    articulations.Add(mark);
+                }
+                else if (technical.Name == "fingering" && technical.Value.Trim() is { Length: > 0 and <= 10 } fingering)
+                {
+                    // A note's fingerings in order; Finale writes a substitution ("3-1") as two of them.
+                    item.Fingerings.Add(fingering);
+                    item.FingeringAbove ??= Placement(technical);
+                }
+                else
+                {
+                    Warn($"주법 기호 <{technical.Name.LocalName}>");
+                }
             }
 
             if (notations.FirstOrDefault(n => n.Name == "arpeggiate") is { } arpeggiate)
@@ -1404,6 +1442,7 @@ public static class MusicXmlImporter
                 AddDynamic(dynamics, measure, item.Staff, position, Placement(dynamics));
 
             foreach (var name in notations.Where(n => n.Name.LocalName is not ("tied" or "tuplet" or "articulations" or "fermata" or "slur" or "dynamics" or "ornaments" or "technical" or "arpeggiate" or "non-arpeggiate" or "glissando" or "slide"))
+                         .Where(n => n.Name != "accidental-mark" || AccidentalMarkAlter(n) is null)
                          .Where(IsStartOrSingle).Select(n => n.Name.LocalName).Distinct())
                 Warn(NotationNames.TryGetValue(name, out var label) ? label : $"기호 <{name}>");
         }
@@ -1425,6 +1464,9 @@ public static class MusicXmlImporter
             ["inverted-turn"] = Articulation.InvertedTurn,
             ["mordent"] = Articulation.Mordent,
             ["inverted-mordent"] = Articulation.InvertedMordent,
+            ["schleifer"] = Articulation.Schleifer,
+            ["haydn"] = Articulation.Haydn,
+            ["shake"] = Articulation.Shake,
         };
 
         /// <summary>
@@ -1445,8 +1487,10 @@ public static class MusicXmlImporter
                 {
                     var type = (string?)ornament.Attribute("type") ?? "single";
                     var strokes = int.TryParse(ornament.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 3;
-                    if (type == "unmeasured" || strokes is < 1 or > 4)
-                        Warn("측정하지 않는 트레몰로(버즈 롤 등)는 가져오지 않음");
+                    if (type == "unmeasured")
+                        item.BuzzRoll = true;
+                    else if (strokes is < 1 or > 4)
+                        Warn("빗금 수를 읽을 수 없는 트레몰로는 가져오지 않음");
                     else if (type == "single")
                         item.Tremolo = strokes;
                     else if (type == "start")
@@ -1456,8 +1500,8 @@ public static class MusicXmlImporter
                 case "wavy-line":
                     ReadLine(ornament, LineKind.TrillLine, measure, item.Staff, new Rational(item.PositionNumerator, item.PositionDenominator), null);
                     break;
-                case "accidental-mark":
-                    Warn("임시표 기호");
+                case "accidental-mark" when AccidentalMarkAlter(ornament) is { } alter:
+                    item.AccidentalMark = alter;
                     break;
                 default:
                     Warn($"장식음 기호 <{ornament.Name.LocalName}>");
@@ -1855,7 +1899,13 @@ public static class MusicXmlImporter
             if (barline.Element("ending") is { } ending)
                 ReadEnding(ending, measure, index);
 
-            if (barline.Element("fermata") is not null) Warn("페르마타");
+            // A fermata over a barline belongs to the barline that closes a measure: a left barline's is the one before.
+            if (barline.Element("fermata") is not null)
+            {
+                if ((string?)barline.Attribute("location") != "left") measure.BarlineFermata = true;
+                else if (_previousMeasure is { } before) before.BarlineFermata = true;
+                else Warn("첫 마디 앞 마디선의 페르마타는 가져오지 않음");
+            }
             // A segno or coda on a barline goes at the start or the end of the measure.
             var at = (string?)barline.Attribute("location") == "left" ? Rational.Zero : new Rational(4L * measure.Numerator, measure.Denominator);
             foreach (var sign in barline.Elements().Where(e => e.Name.LocalName is "segno" or "coda"))
