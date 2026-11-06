@@ -56,4 +56,6 @@
 - [ ] Speedy Entry의 / (빔 끊기·잇기), ; (꾸밈음으로), O (숨기기)가 Finale처럼 되는가? `samples\musx\zwei_gesange.musx`의 피아노에서 전에 보이던 숨긴 쉼표가 이제 안 보이는가?
 - [ ] 남은 도구(`docs/MARK_TOOLS.md` "남은 도구"): 조표 메뉴의 "다른 조표"(F# Bb)와 "이조 악기 바꾸기", 박자표 메뉴의 "3+2/8"·"박자 없음", 코드 도구 메뉴의 "코드 다이어그램"(x32010), 표현 도구의 F 숫자 저음(6 4, #6), Y 음악 기호가 되는가?
 - [ ] PDF: 파일 > 내보내기 > PDF로 악보를 저장해 Edge·Adobe Reader로 연다. 화면과 같은가? 한글 제목·가사가 보이고 복사되는가? 인쇄하면 선명한가? 릴리스의 `preview-zwei-gesange.pdf`(CI가 Windows 글꼴로 만든 것)도 열어 본다.
+- [ ] 인쇄: 파일 > 인쇄(Ctrl+P)로 프린터 또는 "Microsoft Print to PDF"를 골라 인쇄하면 화면과 같은가?
+- [ ] 글리산도 글자: `samples\musicxml\finale-marks-2.musicxml`의 "gliss."가 선을 따라 기울어져 보이는가?
 - 원본 .musx 파일은 바뀌지 않는다. 문제가 있는 파일은 저작권이 있을 수 있으므로 저장소에 올리지 않고 결과만 기록한다.
