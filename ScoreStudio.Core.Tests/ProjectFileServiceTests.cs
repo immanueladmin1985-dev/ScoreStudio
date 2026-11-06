@@ -517,6 +517,31 @@ public sealed class ProjectFileServiceTests : IDisposable
         Assert.Equal(new[] { Articulation.BreathMark }, note.Articulations);
     }
 
+    [Fact]
+    public void Load_Version25File_HasNoFiguredBass_AndCueNotesAndFiguresSurviveSaveAndReopen()
+    {
+        var old = ProjectFileService.Parse("""{ "SchemaVersion": 25, "Parts": [ { "Measures": [ { "Events": [ {} ] } ] } ] }""").Parts[0].Measures[0];
+        Assert.Empty(old.FiguredBass);
+        Assert.False(old.Events[0].Cue || old.Events[0].CueSize);
+
+        var project = ScoreProject.CreateNew();
+        var measure = project.Parts[0].Measures[0];
+        measure.Events.Add(new ScoreEvent { Cue = true });
+        measure.FiguredBass.Add(new ScoreFiguredBass
+        {
+            PositionNumerator = 1, DurationNumerator = 2, Parentheses = true,
+            Figures = { new ScoreFigure { Prefix = "flat", Number = "7", Suffix = "slash", Extend = true } },
+        });
+        var path = PathFor("figured.scoreproj");
+        ProjectFileService.Save(path, project);
+
+        var reopened = ProjectFileService.Load(path).Parts[0].Measures[0];
+        Assert.True(reopened.Events.Single().Cue);
+        var figured = reopened.FiguredBass.Single();
+        var figure = figured.Figures.Single();
+        Assert.Equal((1, 2, true, "flat", "7", "slash", true), (figured.PositionNumerator, figured.DurationNumerator, figured.Parentheses, figure.Prefix, figure.Number, figure.Suffix, figure.Extend));
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -614,6 +639,10 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 25, "Parts": [ { "Measures": [ { "Events": [ { "Fingerings": [ "" ] } ] } ] } ] }""", "운지 번호" },
         { """{ "SchemaVersion": 25, "Parts": [ { "Measures": [ { "Events": [ { "Fingerings": [ "12345678901" ] } ] } ] } ] }""", "운지 번호" },
         { """{ "SchemaVersion": 25, "Parts": [ { "Measures": [ { "Events": [ { "AccidentalMark": 3 } ] } ] } ] }""", "임시표 기호" },
+        { """{ "SchemaVersion": 26, "Parts": [ { "Measures": [ { "FiguredBass": [ { "Figures": [] } ] } ] } ] }""", "숫자 저음" },
+        { """{ "SchemaVersion": 26, "Parts": [ { "Measures": [ { "FiguredBass": [ { "Staff": 1, "Figures": [ { "Number": "6" } ] } ] } ] } ] }""", "숫자 저음" },
+        { """{ "SchemaVersion": 26, "Parts": [ { "Measures": [ { "FiguredBass": [ { "Figures": [ null ] } ] } ] } ] }""", "숫자 저음" },
+        { """{ "SchemaVersion": 26, "Parts": [ { "Measures": [ { "FiguredBass": [ null ] } ] } ] }""", "숫자 저음" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Tablature" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };

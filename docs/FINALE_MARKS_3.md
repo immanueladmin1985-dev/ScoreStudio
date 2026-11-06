@@ -38,3 +38,28 @@
 - `.musx` 220개: 경고 없는 파일 183 → 184.
 - "아직 지원하지 않는 기호" 샘플의 슐라이퍼·숨표는 세로 턴(`vertical-turn`)과 기타 아티큘레이션(`other-articulation`)으로 바꿨다.
 - 아직 경고하는 것: 세로 턴 등 드문 장식음, 기타 아티큘레이션·주법 기호(`other-*`), 댐프 기호.
+
+## 2. 큐 음표, 숫자 저음 (스키마 25 → 26)
+
+### 데이터 모델
+| 대상 | 추가 항목 | 설명 |
+|---|---|---|
+| `ScoreEvent` | `Cue` | 큐 음표(MusicXML `<cue/>`): 작게 그리고 연주하지 않는다. |
+| `ScoreEvent` | `CueSize` | 연주하지만 작게 그리는 음표(`<type size="cue">`) |
+| `ScoreMeasure` | `FiguredBass` (`ScoreFiguredBass` 목록) | 보표(파트의 맨 아래 보표), 위치, 지속 길이(없으면 0), 괄호, 숫자들(`ScoreFigure`: 앞 기호, 숫자, 뒤 기호, 연장선) |
+
+### MusicXML
+| MusicXML | ScoreStudio |
+|---|---|
+| `note/cue` | `Cue`. 내보낼 때는 `<cue/>`를 맨 앞에 쓰고 `<tie>`는 쓰지 않는다(스키마 규칙). 붙임줄 그림은 `<tied>`로 남는다. |
+| `type size="cue"` | `CueSize` (`Cue`인 음표에도 쓴다) |
+| `figured-bass` (`figure`의 `prefix`, `figure-number`, `suffix`, `extend`, `duration`, `parentheses`) | 커서 위치의 `ScoreFiguredBass`. MusicXML 규칙대로 뒤따르는 음표에 붙는다. |
+
+### 그리기
+- 큐 음표·큐 쉼표: 음표머리, 임시표, 점, 꼬리를 0.75배로 그리고, 기둥도 0.75배 길이로 그린다(가운데 줄까지 늘이지 않는다). 간격과 빔은 보통 크기와 같다.
+- 숫자 저음: 그 보표 아래, 그 줄의 가장 낮은 음표보다 아래에 한 기준선을 두고, 숫자를 위에서 아래로 쌓는다. ♯·♭·♮·+·/·\\는 글자로 쓰고, 연장선은 지속 길이 끝까지 긋는다.
+
+### 결과 (2026-11-06)
+- 새 샘플 `samples/musicxml/cue-figured-bass.musicxml`을 경고 없이 가져오고, 저장·다시 열기·내보내기 왕복 결과가 같다. 내보낸 22개 파일이 MusicXML 4.0 스키마를 통과한다.
+- 그리기 테스트: 큐 음표 크기, 숫자 저음의 위치와 쌓는 순서(`MarksLayoutTests`).
+- 알려진 한계: 큐 음표의 빔은 보통 굵기다. 숫자 저음 연장선은 마디를 넘어가지 않는다.

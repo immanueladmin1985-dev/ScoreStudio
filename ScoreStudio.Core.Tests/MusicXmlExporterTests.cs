@@ -61,7 +61,7 @@ public sealed class MusicXmlExporterTests : IDisposable
     {
         string[] order =
         {
-            "grace", "chord", "pitch", "unpitched", "rest", "duration", "tie", "instrument", "voice", "type", "dot",
+            "grace", "cue", "chord", "pitch", "unpitched", "rest", "duration", "tie", "instrument", "voice", "type", "dot",
             "accidental", "time-modification", "stem", "notehead", "staff", "beam", "notations", "lyric",
         };
         var project = MusicXmlImporter.ImportFile(Path.Combine(SampleDirectory, sample)).Project;

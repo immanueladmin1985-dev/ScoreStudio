@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs; version 24: fingerings, accidental marks, buzz rolls, barline fermatas).
+        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs; version 24: fingerings, accidental marks, buzz rolls, barline fermatas; version 25: cue notes, figured bass).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -307,6 +307,15 @@ public static class ProjectFileService
                     throw Corrupt($"{where}의 숨긴 보표 정보가 올바르지 않습니다.");
 
                 ValidateMarks(measure, part.Staves.Count, where);
+                measure.FiguredBass ??= new List<ScoreFiguredBass>();
+                foreach (var figured in measure.FiguredBass)
+                {
+                    if (figured is null || figured.Staff < 0 || figured.Staff >= part.Staves.Count || figured.PositionNumerator < 0 || figured.PositionDenominator <= 0
+                        || figured.DurationNumerator < 0 || figured.DurationDenominator <= 0 || figured.Figures is null || figured.Figures.Count is 0 or > 6
+                        || figured.Figures.Any(f => f is null || (f.Number ?? "").Length > 4 || (f.Prefix ?? "").Length > 20 || (f.Suffix ?? "").Length > 20))
+                        throw Corrupt($"{where}의 숫자 저음 정보가 올바르지 않습니다.");
+                    foreach (var figure in figured.Figures) (figure.Prefix, figure.Number, figure.Suffix) = (figure.Prefix ?? "", figure.Number ?? "", figure.Suffix ?? "");
+                }
                 measure.Events ??= new List<ScoreEvent>();
 
                 for (var e = 0; e < measure.Events.Count; e++)

@@ -310,6 +310,23 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void CueNotes_AndFiguredBass_AreKept()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("cue-figured-bass.musicxml"));
+        Assert.Empty(result.Warnings);
+        var (solo, bass) = (result.Project.Parts[0].Measures, result.Project.Parts[1].Measures);
+
+        Assert.Equal(new[] { "cue", "cue", "cue", "" }, solo[0].Events.Select(e => e.Cue ? "cue" : e.CueSize ? "size" : ""));
+        Assert.Equal(new[] { "", "size", "" }, solo[1].Events.Select(e => e.Cue ? "cue" : e.CueSize ? "size" : ""));
+
+        string Describe(ScoreFiguredBass f) => $"{f.PositionNumerator}/{f.PositionDenominator} {f.DurationNumerator}{(f.Parentheses ? " ()" : "")}: "
+            + string.Join(" ", f.Figures.Select(x => $"[{x.Prefix}|{x.Number}|{x.Suffix}{(x.Extend ? "|_" : "")}]"));
+        Assert.Equal(new[] { "1/1 0: [|6|]", "2/1 1: [|6||_] [|4||_]" }, bass[0].FiguredBass.Select(Describe));
+        Assert.Equal(new[] { "0/1 0: [|7|backslash] [sharp||]", "1/1 0 (): [natural|3|]" }, bass[1].FiguredBass.Select(Describe));
+        Assert.All(bass.SelectMany(m => m.FiguredBass), f => Assert.Equal(0, f.Staff));
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -1023,6 +1040,7 @@ public sealed class MusicXmlImporterTests : IDisposable
     [InlineData("percussion.musicxml")]
     [InlineData("finale-marks-2.musicxml")]
     [InlineData("finale-marks-3.musicxml")]
+    [InlineData("cue-figured-bass.musicxml")]
     [InlineData("pedal-segno-coda.musicxml")]
     public void ImportedProject_SurvivesSaveAndReopen(string file)
     {

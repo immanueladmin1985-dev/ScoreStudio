@@ -1194,7 +1194,7 @@ public static partial class ScoreLayoutEngine
         // With two voices they move apart.
         var y = type <= NoteType.Whole && !oneLine ? staffTop + sp : staffTop + 2 * sp;
         y -= rest.RestShift * sp / 2;
-        items.Add(new GlyphItem(Smufl.Rest(type), x, y, 4 * sp));
+        items.Add(new GlyphItem(Smufl.Rest(type), x, y, 4 * sp * (rest.Cue ? CueScale : 1)));
 
         if (!rest.IsMeasureRest)
         {
@@ -1207,10 +1207,15 @@ public static partial class ScoreLayoutEngine
     }
 
     /// <summary>Draws a chord's heads, accidentals, dots, leger lines and (unless beamed) stem and flag; returns its top and bottom.</summary>
+    /// <summary>Size of cue notes (and cue rests) against normal ones, as Finale's default.</summary>
+    private const double CueScale = 0.75;
+
     private static (double Top, double Bottom) DrawChord(List<DrawItem> items, PreparedChord chord, double x, double staffTop, double sp, bool legerLines = true)
     {
         var type = chord.Value.Type;
-        var headWidth = Smufl.NoteheadWidth(type) * sp;
+        // Cue notes (docs/FINALE_MARKS_3.md) have smaller heads, accidentals, dots, flags and stems; spacing stays the same.
+        var g = chord.Cue ? CueScale : 1;
+        var headWidth = Smufl.NoteheadWidth(type) * sp * g;
         var notes = chord.Notes;
         var low = notes.Min(n => n.Position);
         var high = notes.Max(n => n.Position);
@@ -1233,15 +1238,15 @@ public static partial class ScoreLayoutEngine
         {
             var y = StaffY(staffTop, note.Position, sp);
             // A shaped head (x, diamond, …) is centred where the oval would be, so stems and spacing stay the same.
-            var glyphWidth = Smufl.NoteheadWidth(type, note.Head) * sp;
-            items.Add(new GlyphItem(Smufl.Notehead(type, note.Head), x + note.Side * headWidth + (headWidth - glyphWidth) / 2, y, 4 * sp));
+            var glyphWidth = Smufl.NoteheadWidth(type, note.Head) * sp * g;
+            items.Add(new GlyphItem(Smufl.Notehead(type, note.Head), x + note.Side * headWidth + (headWidth - glyphWidth) / 2, y, 4 * sp * g));
 
             if (note.Accidental is { } alter)
             {
                 var accidentalX = headLeftEdge - NotePreparation.AccidentalGap * sp
                     - note.AccidentalColumn * NotePreparation.AccidentalColumnWidth * sp
-                    - Smufl.AccidentalWidth(alter) * sp;
-                items.Add(new GlyphItem(Smufl.Accidental(alter), accidentalX, y, 4 * sp));
+                    - Smufl.AccidentalWidth(alter) * sp * g;
+                items.Add(new GlyphItem(Smufl.Accidental(alter), accidentalX, y, 4 * sp * g));
             }
 
             // Dots sit in a space: a note on a line puts its dot in the space above.
@@ -1249,7 +1254,7 @@ public static partial class ScoreLayoutEngine
             if (chord.Value.Dots > 0 && dotPositions.Add(dotPosition))
             {
                 for (var d = 0; d < chord.Value.Dots; d++)
-                    items.Add(new GlyphItem(Smufl.AugmentationDot, dotX + d * 0.6 * sp, StaffY(staffTop, dotPosition, sp), 4 * sp));
+                    items.Add(new GlyphItem(Smufl.AugmentationDot, dotX + d * 0.6 * sp, StaffY(staffTop, dotPosition, sp), 4 * sp * g));
             }
         }
 
@@ -1260,20 +1265,21 @@ public static partial class ScoreLayoutEngine
 
         // Stem: from the far note's attachment point to 3.5 spaces past the near note, reaching at least the middle line.
         var thickness = Smufl.StemThickness * sp;
-        var extension = type switch { NoteType.ThirtySecond => 0.5, NoteType.SixtyFourth => 1.0, _ => 0 } * sp;
-        var middle = staffTop + 2 * sp;
+        var extension = type switch { NoteType.ThirtySecond => 0.5, NoteType.SixtyFourth => 1.0, _ => 0 } * sp * g;
+        // A cue stem is shorter and need not reach the middle line.
+        var middle = chord.Cue ? (chord.StemUp ? double.MaxValue : double.MinValue) : staffTop + 2 * sp;
         double stemX, y1, y2;
         if (chord.StemUp)
         {
             stemX = x + headWidth - thickness / 2;
-            y1 = StaffY(staffTop, low, sp) - Smufl.StemAttachY * sp;
-            y2 = Math.Min(StaffY(staffTop, high, sp) - 3.5 * sp - extension, middle);
+            y1 = StaffY(staffTop, low, sp) - Smufl.StemAttachY * sp * g;
+            y2 = Math.Min(StaffY(staffTop, high, sp) - 3.5 * sp * g - extension, middle);
         }
         else
         {
             stemX = x + thickness / 2;
-            y1 = StaffY(staffTop, high, sp) + Smufl.StemAttachY * sp;
-            y2 = Math.Max(StaffY(staffTop, low, sp) + 3.5 * sp + extension, middle);
+            y1 = StaffY(staffTop, high, sp) + Smufl.StemAttachY * sp * g;
+            y2 = Math.Max(StaffY(staffTop, low, sp) + 3.5 * sp * g + extension, middle);
         }
 
         items.Add(new LineItem(stemX, y1, stemX, y2, thickness));
@@ -1281,8 +1287,8 @@ public static partial class ScoreLayoutEngine
         if (Smufl.Flag(type, chord.StemUp) is { } flag)
         {
             // Put the flag's stem anchor on the end of the stem (SMuFL anchors are y-up, the page is y-down).
-            var flagY = y2 + Smufl.FlagAnchorY(type, chord.StemUp) * sp;
-            items.Add(new GlyphItem(flag, stemX - thickness / 2, flagY, 4 * sp));
+            var flagY = y2 + Smufl.FlagAnchorY(type, chord.StemUp) * sp * g;
+            items.Add(new GlyphItem(flag, stemX - thickness / 2, flagY, 4 * sp * g));
         }
 
         return (Math.Min(top, Math.Min(y1, y2)), Math.Max(bottom, Math.Max(y1, y2)));

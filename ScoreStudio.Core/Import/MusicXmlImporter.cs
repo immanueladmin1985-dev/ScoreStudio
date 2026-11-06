@@ -602,7 +602,7 @@ public static class MusicXmlImporter
                         ReadHarmony(child, measure, cursor);
                         break;
                     case "figured-bass":
-                        Warn("숫자 저음");
+                        ReadFiguredBass(child, measure, cursor);
                         break;
                     default:
                         if (!IgnoredMeasureChildren.Contains(child.Name.LocalName))
@@ -936,11 +936,6 @@ public static class MusicXmlImporter
                 cursor += duration;
             }
 
-            if (note.Element("cue") is not null)
-            {
-                Warn("큐 음표");
-                return;
-            }
 
             // A chord's other notes often leave out their voice and staff: they are the first note's.
             var item = new ScoreEvent
@@ -950,6 +945,8 @@ public static class MusicXmlImporter
             };
             if (!isChord) (_chordStaff, _chordVoice) = (item.Staff, item.Voice);
             if (!isChord && _pendingGraces.Remove((item.Staff, item.Voice), out var graces)) item.GraceNotes = graces;
+            item.Cue = note.Element("cue") is not null;
+            item.CueSize = !item.Cue && (string?)note.Element("type")?.Attribute("size") == "cue";
             if (note.Element("rest") is not null)
             {
                 item.Kind = "Rest";
@@ -1943,6 +1940,30 @@ public static class MusicXmlImporter
                 _openVolta.OpenEnd = type == "discontinue";
                 _openVolta = null;
             }
+        }
+
+        /// <summary>
+        /// Figured bass (docs/FINALE_MARKS_3.md) at the cursor, under the part's lowest staff: figures from the top, each
+        /// with its prefix, number, suffix and extension line.
+        /// </summary>
+        private void ReadFiguredBass(XElement element, ScoreMeasure measure, Rational cursor)
+        {
+            var figures = element.Elements("figure").Select(f => new ScoreFigure
+            {
+                Prefix = f.Element("prefix")?.Value.Trim() ?? "", Number = f.Element("figure-number")?.Value.Trim() ?? "",
+                Suffix = f.Element("suffix")?.Value.Trim() ?? "", Extend = f.Element("extend") is { } e && (string?)e.Attribute("type") is null or "start" or "continue",
+            }).Where(f => f.Number.Length <= 4 && f.Prefix.Length <= 20 && f.Suffix.Length <= 20).Take(6).ToList();
+            if (figures.Count == 0)
+            {
+                Warn("읽을 수 없는 숫자 저음은 무시함");
+                return;
+            }
+
+            var figured = new ScoreFiguredBass { Staff = Math.Max(0, _staves - 1), Parentheses = (string?)element.Attribute("parentheses") == "yes", Figures = figures };
+            var duration = element.Element("duration") is null ? Rational.Zero : Duration(element);
+            if (TrySetFraction(cursor, (a, b) => (figured.PositionNumerator, figured.PositionDenominator) = (a, b))
+                && TrySetFraction(duration, (a, b) => (figured.DurationNumerator, figured.DurationDenominator) = (a, b)))
+                measure.FiguredBass.Add(figured);
         }
 
         private void ReadHarmony(XElement harmony, ScoreMeasure measure, Rational cursor)

@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 25;
+    public const int CurrentSchemaVersion = 26;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -260,6 +260,9 @@ public sealed class ScoreMeasure
 
     /// <summary>Chord symbols written above the part, such as "Bbmaj7/D".</summary>
     public List<ScoreChordSymbol> ChordSymbols { get; set; } = new();
+
+    /// <summary>Figured bass under the part's lowest staff (docs/FINALE_MARKS_3.md), by time.</summary>
+    public List<ScoreFiguredBass> FiguredBass { get; set; } = new();
 
     /// <summary>Tuplets in this measure, as spans of time in one voice (see docs/SPRINT4F_TUPLETS.md).</summary>
     public List<ScoreTuplet> Tuplets { get; set; } = new();
@@ -779,6 +782,39 @@ public sealed class ScoreEvent
 
     /// <summary>An unmeasured tremolo (buzz roll): a "z" through the stem.</summary>
     public bool BuzzRoll { get; set; }
+
+    /// <summary>A cue note (MusicXML &lt;cue/&gt;): drawn small and not played (docs/FINALE_MARKS_3.md).</summary>
+    public bool Cue { get; set; }
+
+    /// <summary>Drawn at cue size though it is played (MusicXML &lt;type size="cue"&gt;).</summary>
+    public bool CueSize { get; set; }
+}
+
+/// <summary>One figured-bass group: figures stacked from the top, at a time in the measure.</summary>
+public sealed class ScoreFiguredBass
+{
+    public int Staff { get; set; }
+    public int PositionNumerator { get; set; }
+    public int PositionDenominator { get; set; } = 1;
+
+    /// <summary>How long the figures hold (for extension lines); 0 when the source does not say.</summary>
+    public int DurationNumerator { get; set; }
+    public int DurationDenominator { get; set; } = 1;
+
+    public bool Parentheses { get; set; }
+    public List<ScoreFigure> Figures { get; set; } = new();
+}
+
+/// <summary>A figure: an optional accidental before, a number (may be empty), something after (an accidental or a slash) and an extension line.</summary>
+public sealed class ScoreFigure
+{
+    /// <summary>MusicXML's prefix, e.g. "sharp", "flat", "natural"; empty for none.</summary>
+    public string Prefix { get; set; } = "";
+    public string Number { get; set; } = "";
+
+    /// <summary>MusicXML's suffix, e.g. "sharp", "slash", "backslash", "cross"; empty for none.</summary>
+    public string Suffix { get; set; } = "";
+    public bool Extend { get; set; }
 }
 
 /// <summary>A grace note: a small note without time of its own, before (or after) the note that carries it.</summary>

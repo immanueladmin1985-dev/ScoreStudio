@@ -578,6 +578,80 @@ public static partial class ScoreLayoutEngine
 
         DrawHairpins(items, project, plan, measureLayouts, slots, staffTops, anchors, dynamics, lyricSlots, RowBaseline, contentLeft, systemRight, pending, sp);
         DrawLines(items, project, plan, measureLayouts, placed, slots, staffTops, anchors, texts, RowBaseline, Highest, contentLeft, systemRight, pending, sp);
+        DrawFiguredBass(items, project, plan, measureLayouts, placed, slots, staffTops, anchors, sp);
+    }
+
+    private const double FiguredBassTextSize = 2.0;
+
+    /// <summary>A figure as printed: its accidental or slash marks around the number.</summary>
+    private static string FigureText(ScoreFigure figure)
+    {
+        static string Sign(string name) => name switch
+        {
+            "sharp" => "♯",
+            "flat" => "♭",
+            "natural" => "♮",
+            "double-sharp" or "sharp-sharp" => "𝄪",
+            "flat-flat" => "𝄫",
+            "cross" or "plus" => "+",
+            "slash" => "/",
+            "backslash" => "\\",
+            "vertical" => "|",
+            _ => "",
+        };
+
+        return Sign(figure.Prefix) + figure.Number + Sign(figure.Suffix);
+    }
+
+    /// <summary>
+    /// Figured bass (docs/FINALE_MARKS_3.md) under each staff that has it: one baseline per staff in the system, below its
+    /// lowest notes; the figures of a group stacked downwards, centred on the note, with extension lines to the end of
+    /// the group's duration.
+    /// </summary>
+    private static void DrawFiguredBass(
+        List<DrawItem> items, ScoreProject project, PlannedSystem plan, List<MeasureLayout> measureLayouts, List<PlacedChord> placed,
+        List<StaffSlot> slots, double[] staffTops, Dictionary<int, List<(Rational Time, double X)>> anchors, double sp)
+    {
+        var size = FiguredBassTextSize * sp;
+        var lineHeight = 1.8 * sp;
+        var head = Smufl.NoteheadWidth(NoteType.Quarter) * sp;
+        foreach (var planned in plan.Measures)
+        {
+            if (!anchors.TryGetValue(planned.Index, out var measureAnchors)) continue;
+            for (var p = 0; p < project.Parts.Count; p++)
+            {
+                if (planned.Index >= project.Parts[p].Measures.Count) continue;
+                foreach (var figured in project.Parts[p].Measures[planned.Index].FiguredBass)
+                {
+                    var slot = slots.FindIndex(s => s.PartIndex == p && s.StaffIndex == figured.Staff);
+                    if (slot < 0) continue;
+                    var baseline = Math.Max(staffTops[slot] + 6.5 * sp,
+                        placed.Where(c => c.Slot == slot).Select(c => c.Bottom).DefaultIfEmpty(staffTops[slot]).Max() + 0.8 * size);
+                    var position = new Rational(figured.PositionNumerator, figured.PositionDenominator);
+                    var center = XAtTime(position, measureAnchors) + head / 2;
+                    var end = figured.DurationNumerator > 0
+                        ? XAtTime(position + new Rational(figured.DurationNumerator, figured.DurationDenominator), measureAnchors)
+                        : (double?)null;
+                    if (end is not null && position + new Rational(figured.DurationNumerator, figured.DurationDenominator) >= measureAnchors[^1].Time
+                        && measureLayouts.FirstOrDefault(m => m.MeasureIndex == planned.Index) is { } layout)
+                        end = layout.Right - 0.5 * sp;
+
+                    foreach (var figure in figured.Figures)
+                    {
+                        var text = FigureText(figure);
+                        if (figured.Parentheses && text.Length > 0) text = $"({text})";
+                        if (text.Length > 0) items.Add(new TextItem(text, center, baseline, size, TextAnchor.Middle, Serif: true));
+                        if (figure.Extend && end is { } lineEnd)
+                        {
+                            var from = center + TextMetrics.Width(text, size) / 2 + 0.2 * sp;
+                            if (lineEnd > from) items.Add(new LineItem(from, baseline - 0.3 * size, lineEnd, baseline - 0.3 * size, Smufl.StemThickness * sp));
+                        }
+
+                        baseline += lineHeight;
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>

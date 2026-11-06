@@ -387,4 +387,27 @@ public sealed class MarksLayoutTests
         Assert.True(fermata.Y < top, "above the staff");
         Glyph(page, Smufl.BuzzRoll);
     }
+
+    [Fact]
+    public void CueNotes_AreSmaller_AndFiguredBassGoesUnderTheStaff()
+    {
+        var cue = Note("D5", 74, 0, 2);
+        cue.Cue = true;
+        var project = Score(1, cue, Note("B4", 71, 2, 2));
+        project.Parts[0].Measures[0].FiguredBass.Add(new ScoreFiguredBass
+        {
+            PositionNumerator = 2,
+            Figures = { new ScoreFigure { Number = "6" }, new ScoreFigure { Prefix = "sharp", Number = "4" } },
+        });
+        var (page, top) = Layout(project);
+
+        var heads = page.Items.OfType<GlyphItem>().Where(g => g.Glyph == Smufl.NoteheadHalf).OrderBy(g => g.X).ToList();
+        Assert.Equal(0.75 * heads[1].Size, heads[0].Size, 6);
+
+        var six = Assert.Single(page.Items.OfType<TextItem>(), t => t.Text == "6");
+        var four = Assert.Single(page.Items.OfType<TextItem>(), t => t.Text == "♯4");
+        Assert.True(six.Y > top + 4 * Sp && four.Y > six.Y, "under the staff, stacked downwards");
+        Assert.Equal(six.X, four.X, 6);
+        Assert.True(six.X > heads[1].X && six.X < heads[1].X + Smufl.NoteheadWidth(NoteType.Half) * Sp, "under the note it figures");
+    }
 }

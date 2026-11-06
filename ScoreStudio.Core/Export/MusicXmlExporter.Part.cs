@@ -185,6 +185,12 @@ public static partial class MusicXmlExporter
                 foreach (var c in measure.ChordSymbols) Add(new Rational(c.PositionNumerator, c.PositionDenominator).Denominator);
                 foreach (var c in measure.ClefChanges) Add(new Rational(c.PositionNumerator, c.PositionDenominator).Denominator);
                 foreach (var d in measure.Directions) Add(new Rational(d.PositionNumerator, d.PositionDenominator).Denominator);
+                foreach (var f in measure.FiguredBass)
+                {
+                    Add(new Rational(f.PositionNumerator, f.PositionDenominator).Denominator);
+                    if (f.DurationNumerator > 0) Add(new Rational(f.DurationNumerator, f.DurationDenominator).Denominator);
+                }
+
                 foreach (var l in measure.Lines)
                 {
                     Add(new Rational(l.PositionNumerator, l.PositionDenominator).Denominator);
@@ -729,6 +735,24 @@ public static partial class MusicXmlExporter
                 items.Add(new Item(line.Position, direction, UsesOffset: false));
             }
 
+            foreach (var figured in measure.FiguredBass.Where(f => f.Staff == staff))
+            {
+                var element = new XElement("figured-bass");
+                if (figured.Parentheses) element.Add(new XAttribute("parentheses", "yes"));
+                foreach (var figure in figured.Figures)
+                {
+                    var figureElement = new XElement("figure");
+                    if (figure.Prefix.Length > 0) figureElement.Add(new XElement("prefix", figure.Prefix));
+                    if (figure.Number.Length > 0) figureElement.Add(new XElement("figure-number", figure.Number));
+                    if (figure.Suffix.Length > 0) figureElement.Add(new XElement("suffix", figure.Suffix));
+                    if (figure.Extend) figureElement.Add(new XElement("extend"));
+                    element.Add(figureElement);
+                }
+
+                if (figured.DurationNumerator > 0) element.Add(new XElement("duration", Duration(new Rational(figured.DurationNumerator, figured.DurationDenominator))));
+                items.Add(new Item(new Rational(figured.PositionNumerator, figured.PositionDenominator), element, UsesOffset: false));
+            }
+
             foreach (var chord in measure.ChordSymbols.Where(c => c.Staff == staff))
                 items.Add(new Item(new Rational(chord.PositionNumerator, chord.PositionDenominator), Harmony(chord, staff), UsesOffset: true));
 
@@ -880,6 +904,7 @@ public static partial class MusicXmlExporter
         private XElement Note(MeasureContext context, ScoreEvent e, bool isChordMember, bool isMeasureRest)
         {
             var note = new XElement("note");
+            if (e.Cue) note.Add(new XElement("cue"));
             if (isChordMember) note.Add(new XElement("chord"));
 
             var isRest = e.Kind == "Rest";
@@ -909,8 +934,9 @@ public static partial class MusicXmlExporter
             note.Add(new XElement("duration", Duration(duration)));
             var tieStop = !isRest && _tieStops.Contains(e);
             var tieStart = !isRest && e.TieToNext;
-            if (tieStop) note.Add(new XElement("tie", new XAttribute("type", "stop")));
-            if (tieStart) note.Add(new XElement("tie", new XAttribute("type", "start")));
+            // A cue note has no <tie> (its tie is only drawn, with <tied>).
+            if (tieStop && !e.Cue) note.Add(new XElement("tie", new XAttribute("type", "stop")));
+            if (tieStart && !e.Cue) note.Add(new XElement("tie", new XAttribute("type", "start")));
             if (!isRest && e.Instrument.Length > 0) note.Add(new XElement("instrument", new XAttribute("id", $"{_id}-{e.Instrument}")));
             note.Add(new XElement("voice", e.Voice));
 
@@ -923,6 +949,7 @@ public static partial class MusicXmlExporter
                     : Notation.ValueOf(duration, NotePreparation.TupletRatio(context.Measure, e));
                 if (!value.IsExact) Warn("음표 종류로 정확히 나타낼 수 없는 길이 (길이는 그대로 쓰고 가장 가까운 짧은 음표로 표시)");
                 note.Add(new XElement("type", TypeNames[(int)value.Type]));
+                if (e.Cue || e.CueSize) note.Element("type")!.Add(new XAttribute("size", "cue"));
                 for (var d = 0; d < value.Dots; d++) note.Add(new XElement("dot"));
 
                 // A written value longer than the real length is shortened by a tuplet: written : real = actual : normal.
