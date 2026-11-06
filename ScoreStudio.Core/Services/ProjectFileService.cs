@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs; version 24: fingerings, accidental marks, buzz rolls, barline fermatas; version 25: cue notes, figured bass; version 26: time symbols, beats text, senza misura, other keys, transposition changes).
+        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs; version 24: fingerings, accidental marks, buzz rolls, barline fermatas; version 25: cue notes, figured bass; version 26: time symbols, beats text, senza misura, other keys, transposition changes; version 27: chord diagrams, symbols).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -275,6 +275,15 @@ public static class ProjectFileService
                         throw Corrupt($"{where}의 {c + 1}번째 코드 이름이 올바르지 않습니다.");
                     chord.Kind ??= "major";
                     chord.Text ??= chord.RootStep;
+                    if (chord.Frame is { } frame)
+                    {
+                        frame.Notes ??= new List<ScoreFrameNote>();
+                        if (frame.Strings is < 2 or > 12 || frame.Frets is < 1 or > 12 || frame.FirstFret is < 1 or > 30
+                            || frame.Notes.Any(n => n is null || n.String < 1 || n.String > frame.Strings || n.Fret is < 0 or > 40
+                                || (n.Fingering ?? "").Length > 3 || (n.Barre ?? "") is not ("" or "start" or "stop")))
+                            throw Corrupt($"{where}의 {c + 1}번째 코드 이름의 코드 다이어그램이 올바르지 않습니다.");
+                        foreach (var note in frame.Notes) (note.Fingering, note.Barre) = (note.Fingering ?? "", note.Barre ?? "");
+                    }
                 }
 
                 measure.ClefChanges ??= new List<ScoreClefChange>();
@@ -399,7 +408,7 @@ public static class ProjectFileService
             direction.Text ??= "";
             direction.BeatUnit ??= "quarter";
             direction.PerMinute ??= "";
-            if ((direction.Kind is DirectionKind.Dynamic or DirectionKind.Rehearsal && string.IsNullOrWhiteSpace(direction.Text))
+            if ((direction.Kind is DirectionKind.Dynamic or DirectionKind.Rehearsal or DirectionKind.Symbol && string.IsNullOrWhiteSpace(direction.Text))
                 || (direction.Kind == DirectionKind.Tempo && (string.IsNullOrWhiteSpace(direction.PerMinute)
                     || !ScoreDirection.BeatUnits.Contains(direction.BeatUnit) || direction.BeatUnitDots is < 0 or > 3)))
                 throw Corrupt($"{where}의 셈여림·메트로놈 표시 정보가 올바르지 않습니다.");

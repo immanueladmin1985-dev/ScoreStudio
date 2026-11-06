@@ -808,6 +808,9 @@ public static partial class MusicXmlExporter
                         ? new XElement(direction.Text)
                         : new XElement("other-dynamics", direction.Text));
                     break;
+                case DirectionKind.Symbol:
+                    type = new XElement("symbol", direction.Text);
+                    break;
                 case DirectionKind.Segno or DirectionKind.Coda:
                     type = new XElement(direction.Kind == DirectionKind.Segno ? "segno" : "coda");
                     break;
@@ -850,6 +853,22 @@ public static partial class MusicXmlExporter
                 var bassElement = new XElement("bass", new XElement("bass-step", bass));
                 if (chord.BassAlter != 0) bassElement.Add(new XElement("bass-alter", chord.BassAlter));
                 harmony.Add(bassElement);
+            }
+
+            if (chord.Frame is { Notes.Count: > 0 } frame)
+            {
+                // A chord diagram (docs/FINALE_MARKS_3.md).
+                var element = new XElement("frame", new XElement("frame-strings", frame.Strings), new XElement("frame-frets", frame.Frets));
+                if (frame.FirstFret is { } first) element.Add(new XElement("first-fret", first));
+                foreach (var note in frame.Notes)
+                {
+                    var noteElement = new XElement("frame-note", new XElement("string", note.String), new XElement("fret", note.Fret));
+                    if (note.Fingering.Length > 0) noteElement.Add(new XElement("fingering", note.Fingering));
+                    if (note.Barre.Length > 0) noteElement.Add(new XElement("barre", new XAttribute("type", note.Barre)));
+                    element.Add(noteElement);
+                }
+
+                harmony.Add(element);
             }
 
             if (_staves > 1) harmony.Add(new XElement("staff", staff + 1));

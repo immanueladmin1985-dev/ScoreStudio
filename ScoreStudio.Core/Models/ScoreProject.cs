@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 27;
+    public const int CurrentSchemaVersion = 28;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -462,6 +462,9 @@ public enum DirectionKind
 
     /// <summary>The coda sign.</summary>
     Coda,
+
+    /// <summary>A music-font symbol given by its SMuFL name in <see cref="ScoreDirection.Text"/>, e.g. "keyboardPedalPed".</summary>
+    Symbol,
 }
 
 /// <summary>A mark at one point of a staff that is not attached to a note: a dynamic, a text or a metronome mark.</summary>
@@ -720,6 +723,35 @@ public sealed class ScoreChordSymbol
     /// ScoreStudio place it above the staff.
     /// </summary>
     public double? Y { get; set; }
+
+    /// <summary>A guitar chord diagram drawn above the symbol (docs/FINALE_MARKS_3.md); null for none.</summary>
+    public ScoreFrame? Frame { get; set; }
+}
+
+/// <summary>A fretboard diagram: strings and frets, where it starts, and the fingered notes.</summary>
+public sealed class ScoreFrame
+{
+    public int Strings { get; set; } = 6;
+    public int Frets { get; set; } = 4;
+
+    /// <summary>The fret the diagram's top row is (with a "3fr" label beside it); null when it starts at the nut.</summary>
+    public int? FirstFret { get; set; }
+
+    /// <summary>Played strings. A string without a note is not played (drawn with an x); fret 0 is an open string.</summary>
+    public List<ScoreFrameNote> Notes { get; set; } = new();
+}
+
+public sealed class ScoreFrameNote
+{
+    /// <summary>1 is the highest string, drawn on the right.</summary>
+    public int String { get; set; } = 1;
+    public int Fret { get; set; }
+
+    /// <summary>A finger number shown under the diagram; empty for none.</summary>
+    public string Fingering { get; set; } = "";
+
+    /// <summary>"start" or "stop" for the ends of a barre; empty otherwise.</summary>
+    public string Barre { get; set; } = "";
 }
 
 /// <summary>

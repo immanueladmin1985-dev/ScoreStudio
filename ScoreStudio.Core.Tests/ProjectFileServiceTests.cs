@@ -561,6 +561,29 @@ public sealed class ProjectFileServiceTests : IDisposable
             string.Join(",", reopened.KeyAccidentals.Select(k => k.Step + k.Alter)), reopened.Transpose!.Chromatic));
     }
 
+    [Fact]
+    public void Load_Version27File_HasNoChordDiagrams_AndDiagramsAndSymbolsSurviveSaveAndReopen()
+    {
+        var old = ProjectFileService.Parse("""{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "ChordSymbols": [ { "RootStep": "C" } ] } ] } ] }""");
+        Assert.Null(old.Parts[0].Measures[0].ChordSymbols[0].Frame);
+
+        var project = ScoreProject.CreateNew();
+        var measure = project.Parts[0].Measures[0];
+        measure.ChordSymbols.Add(new ScoreChordSymbol
+        {
+            Frame = new ScoreFrame { Strings = 4, Frets = 5, FirstFret = 3, Notes = { new ScoreFrameNote { String = 2, Fret = 4, Fingering = "1", Barre = "start" } } },
+        });
+        measure.Directions.Add(new ScoreDirection { Kind = DirectionKind.Symbol, Text = "repeat2Bars" });
+        var path = PathFor("frame.scoreproj");
+        ProjectFileService.Save(path, project);
+
+        var reopened = ProjectFileService.Load(path).Parts[0].Measures[0];
+        var frame = reopened.ChordSymbols.Single().Frame!;
+        var note = frame.Notes.Single();
+        Assert.Equal((4, 5, (int?)3, 2, 4, "1", "start"), (frame.Strings, frame.Frets, frame.FirstFret, note.String, note.Fret, note.Fingering, note.Barre));
+        Assert.Equal((DirectionKind.Symbol, "repeat2Bars"), (reopened.Directions.Single().Kind, reopened.Directions.Single().Text));
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -667,6 +690,10 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "KeyAccidentals": [ { "Step": "F", "Alter": 3 } ] } ] } ] }""", "박자표·조표" },
         { """{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "Transpose": { "Chromatic": 30 } } ] } ] }""", "박자표·조표" },
         { """{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "TimeSymbol": "Star" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
+        { """{ "SchemaVersion": 28, "Parts": [ { "Measures": [ { "ChordSymbols": [ { "Frame": { "Strings": 1 } } ] } ] } ] }""", "코드 다이어그램" },
+        { """{ "SchemaVersion": 28, "Parts": [ { "Measures": [ { "ChordSymbols": [ { "Frame": { "Notes": [ { "String": 7 } ] } } ] } ] } ] }""", "코드 다이어그램" },
+        { """{ "SchemaVersion": 28, "Parts": [ { "Measures": [ { "ChordSymbols": [ { "Frame": { "Notes": [ { "Barre": "middle" } ] } } ] } ] } ] }""", "코드 다이어그램" },
+        { """{ "SchemaVersion": 28, "Parts": [ { "Measures": [ { "Directions": [ { "Kind": "Symbol", "Text": "" } ] } ] } ] }""", "셈여림·메트로놈" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Tablature" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };

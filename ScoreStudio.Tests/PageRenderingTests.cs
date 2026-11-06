@@ -171,6 +171,7 @@ public sealed class PageRenderingTests
     [InlineData("finale-marks-3")]
     [InlineData("cue-figured-bass")]
     [InlineData("time-key-transpose")]
+    [InlineData("chord-diagrams-symbols")]
     public void ImportedMusicXml_DrawsClefsAndNoteheadsWhereTheLayoutPutsThem(string sample)
     {
         RunSta(() =>

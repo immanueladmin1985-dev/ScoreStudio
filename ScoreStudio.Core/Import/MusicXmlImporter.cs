@@ -1679,6 +1679,11 @@ public static class MusicXmlImporter
                         if (words.Count == 0) wordsAt = measure.Directions.Count;
                         words.Add(type);
                         break;
+                    case "symbol" when SymbolText(type.Value.Trim()) is null && type.Value.Trim() is { Length: > 0 and <= 60 } glyphName:
+                        // A music-font symbol on its own (docs/FINALE_MARKS_3.md): kept by name, drawn when the glyph is known.
+                        AddDirection(measure, new ScoreDirection { Kind = DirectionKind.Symbol, Staff = staff, Text = glyphName, Above = above, Y = DefaultY(type) }, position);
+                        if (Layout.Smufl.Named(glyphName) is null) Warn($"지시 기호 <{glyphName}>은(는) 저장만 하고 그리지 않음");
+                        break;
                     case "symbol" when SymbolText(type.Value.Trim()) is { } symbol:
                         // Finale writes "Tempo (♩=120)" as words, a SMuFL note and words: the note joins the text.
                         if (words.Count == 0) wordsAt = measure.Directions.Count;
@@ -2035,6 +2040,36 @@ public static class MusicXmlImporter
                 measure.FiguredBass.Add(figured);
         }
 
+        /// <summary>A guitar chord diagram (docs/FINALE_MARKS_3.md); null, with a warning, when it cannot be read.</summary>
+        private ScoreFrame? ReadFrame(XElement frame)
+        {
+            static int? Number(XElement? element) =>
+                int.TryParse(element?.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : null;
+            var result = new ScoreFrame
+            {
+                Strings = Number(frame.Element("frame-strings")) ?? 0, Frets = Number(frame.Element("frame-frets")) ?? 0,
+                FirstFret = Number(frame.Element("first-fret")) is > 1 and var first ? first : null,
+            };
+            foreach (var note in frame.Elements("frame-note"))
+            {
+                result.Notes.Add(new ScoreFrameNote
+                {
+                    String = Number(note.Element("string")) ?? 0, Fret = Number(note.Element("fret")) ?? -1,
+                    Fingering = note.Element("fingering")?.Value.Trim() ?? "",
+                    Barre = (string?)note.Element("barre")?.Attribute("type") switch { "start" => "start", "stop" => "stop", _ => "" },
+                });
+            }
+
+            if (result.Strings is < 2 or > 12 || result.Frets is < 1 or > 12 || result.FirstFret > 30 || result.Notes.Count == 0
+                || result.Notes.Any(n => n.String < 1 || n.String > result.Strings || n.Fret is < 0 or > 40 || n.Fingering.Length > 3))
+            {
+                Warn("읽을 수 없는 코드 다이어그램은 가져오지 않음");
+                return null;
+            }
+
+            return result;
+        }
+
         private void ReadHarmony(XElement harmony, ScoreMeasure measure, Rational cursor)
         {
             var root = harmony.Element("root");
@@ -2046,9 +2081,6 @@ public static class MusicXmlImporter
                     : "읽을 수 없는 코드 이름");
                 return;
             }
-
-            if (harmony.Element("frame") is not null)
-                Warn("코드 다이어그램(기타 프렛 그림)");
 
             var position = cursor;
             if (harmony.Element("offset") is { } offset
@@ -2085,6 +2117,7 @@ public static class MusicXmlImporter
             }
 
             chord.Text = ChordText(chord, harmony);
+            if (harmony.Element("frame") is { } frame) chord.Frame = ReadFrame(frame);
             if (double.TryParse((string?)harmony.Attribute("default-y"), NumberStyles.Float, CultureInfo.InvariantCulture, out var tenths)
                 && Math.Abs(tenths) <= 2000)
                 chord.Y = tenths / 10;

@@ -46,12 +46,79 @@ public static partial class ScoreLayoutEngine
             var highest = placed.Where(p => p.Slot == staff.Key).Select(p => p.Top).DefaultIfEmpty(staffTop).Min();
             var baseline = sourceY is { } y ? staffTop - y * sp : Math.Min(staffTop - 2.5 * sp, highest - 0.6 * sp);
 
+            var top = baseline - 0.75 * size;
             foreach (var symbol in staff)
-                items.Add(new TextItem(ChordDisplay(symbol.Symbol.Text), symbol.X, baseline, size, TextAnchor.Start));
-            tops[staff.Key] = baseline - 0.75 * size;
+            {
+                var text = ChordDisplay(symbol.Symbol.Text);
+                items.Add(new TextItem(text, symbol.X, baseline, size, TextAnchor.Start));
+                if (symbol.Symbol.Frame is { } frame)
+                {
+                    // Finger numbers go between the diagram and the symbol, so they need room there.
+                    var gap = frame.Notes.Any(n => n.Fingering.Length > 0) ? 2.0 : 0.8;
+                    top = Math.Min(top, DrawFrame(items, frame, symbol.X + TextMetrics.Width(text, size) / 2, baseline - 0.75 * size - gap * sp, sp));
+                }
+            }
+
+            tops[staff.Key] = top;
         }
 
         return tops;
+    }
+
+    private const double FrameStringSpace = 0.8;
+    private const double FrameFretSpace = 0.9;
+
+    /// <summary>
+    /// A chord diagram (docs/FINALE_MARKS_3.md) centred on <paramref name="center"/> with its bottom at
+    /// <paramref name="bottom"/>: strings (the highest on the right), frets with a thick nut when it starts at the nut,
+    /// a dot for each fingered note, o and x above open and unplayed strings, a barre, the first fret's number beside
+    /// it and finger numbers under it. Returns its top.
+    /// </summary>
+    private static double DrawFrame(List<DrawItem> items, ScoreFrame frame, double center, double bottom, double sp)
+    {
+        var width = (frame.Strings - 1) * FrameStringSpace * sp;
+        var height = frame.Frets * FrameFretSpace * sp;
+        var (left, top) = (center - width / 2, bottom - height);
+        var line = Smufl.StaffLineThickness * sp;
+        double StringX(int s) => left + (frame.Strings - s) * FrameStringSpace * sp;
+        var firstFret = frame.FirstFret ?? 1;
+
+        for (var s = 1; s <= frame.Strings; s++) items.Add(new LineItem(StringX(s), top, StringX(s), bottom, line));
+        for (var f = 0; f <= frame.Frets; f++)
+        {
+            var y = top + f * FrameFretSpace * sp;
+            items.Add(new LineItem(left, y, left + width, y, f == 0 && frame.FirstFret is null ? 3 * line : line));
+        }
+
+        if (frame.FirstFret is { } fret)
+            items.Add(new TextItem($"{fret}fr", left + width + 0.4 * sp, top + 0.8 * sp, 1.6 * sp, TextAnchor.Start));
+
+        var markY = top - 0.6 * sp;
+        for (var s = 1; s <= frame.Strings; s++)
+        {
+            var notes = frame.Notes.Where(n => n.String == s).ToList();
+            if (notes.Count == 0) items.Add(new GlyphItem(Smufl.FretboardMuted, StringX(s), markY, 4 * sp));
+            else if (notes.Any(n => n.Fret == 0)) items.Add(new GlyphItem(Smufl.FretboardOpen, StringX(s), markY, 4 * sp));
+        }
+
+        foreach (var note in frame.Notes.Where(n => n.Fret > 0))
+        {
+            var y = top + (note.Fret - firstFret + 0.5) * FrameFretSpace * sp;
+            if (y < top || y > bottom) continue;
+            items.Add(new GlyphItem(Smufl.FretboardDot, StringX(note.String), y, 4 * sp * 1.4));
+            if (note.Fingering.Length > 0)
+                items.Add(new TextItem(note.Fingering, StringX(note.String), bottom + 1.3 * sp, 1.4 * sp, TextAnchor.Middle));
+        }
+
+        // A barre: a thick line across the strings from its start to its stop.
+        foreach (var start in frame.Notes.Where(n => n.Barre == "start"))
+        {
+            var stop = frame.Notes.FirstOrDefault(n => n.Barre == "stop" && n.Fret == start.Fret) ?? frame.Notes.MinBy(n => n.String)!;
+            var y = top + (start.Fret - firstFret + 0.5) * FrameFretSpace * sp;
+            if (y >= top && y <= bottom) items.Add(new LineItem(StringX(start.String), y, StringX(stop.String), y, 0.5 * sp));
+        }
+
+        return markY - 0.4 * sp;
     }
 
     /// <summary>The printed symbol with real flat and sharp signs after the root and the bass ("Bb/D" → "B♭/D").</summary>

@@ -356,6 +356,33 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void ChordDiagrams_AndSymbols_AreKept()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("chord-diagrams-symbols.musicxml"));
+        Assert.Empty(result.Warnings);
+        var m = result.Project.Parts[0].Measures;
+
+        var c = m[0].ChordSymbols.Single().Frame!;
+        Assert.Equal((6, 4, (int?)null), (c.Strings, c.Frets, c.FirstFret));
+        Assert.Equal(new[] { "5:3:3:", "4:2:2:", "3:0::", "2:1:1:", "1:0::" }, c.Notes.Select(n => $"{n.String}:{n.Fret}:{n.Fingering}:{n.Barre}"));
+        var f = m[1].ChordSymbols.Single().Frame!;
+        Assert.Equal(5, f.FirstFret);
+        Assert.Equal(new[] { "start", "", "", "", "", "stop" }, f.Notes.Select(n => n.Barre));
+
+        Assert.Equal(new[] { "keyboardPedalPed", "keyboardPedalUp", "repeat1Bar", "pictTriangle" },
+            m.SelectMany(x => x.Directions).Where(d => d.Kind == DirectionKind.Symbol).Select(d => d.Text));
+    }
+
+    [Fact]
+    public void SymbolsWithoutAKnownGlyph_AreKept_AndSaidNotToBeDrawn()
+    {
+        var xml = OneMeasure("", "<direction><direction-type><symbol>handbellsMalletBellOnTable</symbol></direction-type></direction>");
+        var result = MusicXmlImporter.ImportXml(xml, "기호");
+        Assert.Equal("handbellsMalletBellOnTable", Assert.Single(result.Project.Parts[0].Measures[0].Directions).Text);
+        Assert.Equal("지시 기호 <handbellsMalletBellOnTable>은(는) 저장만 하고 그리지 않음", Assert.Single(result.Warnings).Message);
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -1069,6 +1096,7 @@ public sealed class MusicXmlImporterTests : IDisposable
     [InlineData("percussion.musicxml")]
     [InlineData("finale-marks-2.musicxml")]
     [InlineData("finale-marks-3.musicxml")]
+    [InlineData("chord-diagrams-symbols.musicxml")]
     [InlineData("time-key-transpose.musicxml")]
     [InlineData("cue-figured-bass.musicxml")]
     [InlineData("pedal-segno-coda.musicxml")]

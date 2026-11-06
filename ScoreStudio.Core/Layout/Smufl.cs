@@ -300,6 +300,65 @@ public static class Smufl
         _ => (above ? '\uE4C0' : '\uE4C1', 2.42, 1.33),
     };
 
+    /// <summary>
+    /// Glyphs that MusicXML &lt;symbol&gt; directions name (docs/FINALE_MARKS_3.md), with the advance width and how far
+    /// each reaches below and above its baseline, in staff spaces (Bravura).
+    /// </summary>
+    private static readonly Dictionary<string, (char Glyph, double Width, double Bottom, double Top)> NamedGlyphs = new()
+    {
+        ["keyboardPedalPed"] = ('\uE650', 4.076, -0.032, 2.22),
+        ["keyboardPedalUp"] = ('\uE655', 1.8, 0.0, 1.8),
+        ["keyboardPedalSost"] = ('\uE659', 4.428, -0.06, 2.364),
+        ["keyboardPedalHalf"] = ('\uE656', 3.0, 0.0, 2.128),
+        ["keyboardPedalP"] = ('\uE651', 1.972, -0.032, 2.22),
+        ["ottavaAlta"] = ('\uE511', 3.54, -0.04, 1.852),
+        ["ottavaBassa"] = ('\uE512', 3.356, -0.04, 1.852),
+        ["quindicesimaAlta"] = ('\uE515', 5.26, -0.04, 1.844),
+        ["quindicesimaBassa"] = ('\uE516', 5.14, -0.04, 1.844),
+        ["segno"] = ('\uE047', 2.228, -0.108, 3.036),
+        ["coda"] = ('\uE048', 3.816, -0.632, 3.592),
+        ["codaSquare"] = ('\uE049', 3.276, -0.616, 3.612),
+        ["fermataAbove"] = ('\uE4C0', 2.42, -0.012, 1.316),
+        ["fermataBelow"] = ('\uE4C1', 2.42, -1.328, 0.0),
+        ["fermataShortAbove"] = ('\uE4C4', 2.412, 0.0, 1.364),
+        ["fermataLongAbove"] = ('\uE4C6', 2.42, -0.004, 1.332),
+        ["unpitchedPercussionClef1"] = ('\uE069', 1.528, -1.0, 1.0),
+        ["repeat1Bar"] = ('\uE500', 2.132, -1.0, 1.116),
+        ["repeat2Bars"] = ('\uE501', 3.044, -1.0, 1.116),
+        ["repeat4Bars"] = ('\uE502', 4.932, -1.0, 1.116),
+        ["breathMarkComma"] = ('\uE4CE', 0.612, 0.008, 1.004),
+        ["caesura"] = ('\uE4D1', 1.54, -0.004, 2.128),
+        ["gClef"] = ('\uE050', 2.684, -2.632, 4.392),
+        ["fClef"] = ('\uE062', 2.736, -2.54, 1.048),
+        ["cClef"] = ('\uE05C', 2.796, -2.024, 2.024),
+        ["articAccentAbove"] = ('\uE4A0', 1.356, 0.004, 0.98),
+        ["articStaccatoAbove"] = ('\uE4A2', 0.336, 0.0, 0.336),
+        ["articTenutoAbove"] = ('\uE4A4', 1.352, 0.0, 0.192),
+        ["ornamentTrill"] = ('\uE566', 2.084, -0.04, 1.56),
+        ["ornamentTurn"] = ('\uE567', 1.84, 0.0, 0.872),
+        ["ornamentMordent"] = ('\uE56C', 2.92, 0.0, 0.98),
+        ["stringsDownBow"] = ('\uE610', 1.248, 0.0, 1.272),
+        ["stringsUpBow"] = ('\uE612', 1.0, 0.004, 1.98),
+        ["pictTriangle"] = ('\uE700', 4.144, 0.0, 3.144),
+        ["accidentalSharp"] = ('\uE262', 0.996, -1.392, 1.4),
+        ["accidentalFlat"] = ('\uE260', 0.904, -0.7, 1.756),
+        ["accidentalNatural"] = ('\uE261', 0.672, -1.34, 1.364),
+        ["restQuarter"] = ('\uE4E5', 1.08, -1.5, 1.492),
+        ["noteQuarterUp"] = ('\uE1D5', 1.328, -0.564, 3.5),
+        ["noteHalfUp"] = ('\uE1D3', 1.364, -0.58, 3.5),
+        ["noteWhole"] = ('\uE1D2', 1.836, -0.548, 0.544),
+        ["arrowBlackUp"] = ('\uEB60', 0.912, 0.0, 2.108),
+        ["arrowBlackDown"] = ('\uEB64', 0.912, 0.0, 2.108),
+    };
+
+    /// <summary>A named glyph for a &lt;symbol&gt; direction, or null for one ScoreStudio does not draw.</summary>
+    public static (char Glyph, double Width, double Bottom, double Top)? Named(string name) =>
+        NamedGlyphs.TryGetValue(name, out var glyph) ? glyph : null;
+
+    public const char FretboardDot = '\uE858';  // fretboardFilledCircle, centred on its origin
+    public const char FretboardOpen = '\uE85A'; // fretboardO
+    public const char FretboardMuted = '\uE859'; // fretboardX
+
     /// <summary>The music font's dynamic letter for p, m, f, r, s, z or n, with its advance width in staff spaces.</summary>
     public static (char Glyph, double Width)? DynamicLetter(char letter) => letter switch
     {

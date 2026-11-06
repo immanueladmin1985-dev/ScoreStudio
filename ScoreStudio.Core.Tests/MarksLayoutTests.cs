@@ -433,4 +433,28 @@ public sealed class MarksLayoutTests
         Assert.Equal(top, Glyph(page, Smufl.AccidentalSharp).Y, 6);        // F5, the top line
         Assert.Equal(top + 2 * Sp, Glyph(page, Smufl.AccidentalFlat).Y, 6); // B4, the middle line
     }
+
+    [Fact]
+    public void ChordDiagram_IsDrawnOverItsSymbol_WithDotsOpenAndMutedStrings()
+    {
+        var project = Score(1, Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[0].ChordSymbols.Add(new ScoreChordSymbol
+        {
+            Text = "C",
+            Frame = new ScoreFrame { Notes = { new() { String = 5, Fret = 3 }, new() { String = 4, Fret = 2 }, new() { String = 3, Fret = 0 }, new() { String = 2, Fret = 1 }, new() { String = 1, Fret = 0 } } },
+        });
+        project.Parts[0].Measures[0].Directions.Add(new ScoreDirection { Kind = DirectionKind.Symbol, Text = "keyboardPedalPed", Above = false });
+        var (page, top) = Layout(project);
+
+        var name = Assert.Single(page.Items.OfType<TextItem>(), t => t.Text == "C");
+        var dots = page.Items.OfType<GlyphItem>().Where(g => g.Glyph == Smufl.FretboardDot).ToList();
+        Assert.Equal(3, dots.Count);
+        Assert.All(dots, d => Assert.True(d.Y < name.Y - 1.5 * Sp, "the diagram is over the symbol"));
+        Assert.Equal(2, page.Items.OfType<GlyphItem>().Count(g => g.Glyph == Smufl.FretboardOpen));
+        Assert.Single(page.Items.OfType<GlyphItem>(), g => g.Glyph == Smufl.FretboardMuted);
+        // Six strings drawn as upright lines over the symbol.
+        Assert.Equal(6, page.Items.OfType<LineItem>().Count(l => l.X1 == l.X2 && l.Y2 < name.Y && l.Y1 < top - 2 * Sp));
+
+        Assert.True(Glyph(page, Smufl.PedalPed).Y > top + 4 * Sp, "the symbol is under the staff");
+    }
 }

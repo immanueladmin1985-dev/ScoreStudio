@@ -525,6 +525,16 @@ public static partial class ScoreLayoutEngine
                                 : Math.Max(staffTop + 6.5 * sp, under.Select(c => c.Bottom).DefaultIfEmpty(staffTop).Max() + 2.2 * sp);
                         }
 
+                        if (direction.Kind == DirectionKind.Symbol)
+                        {
+                            // A named music-font symbol (docs/FINALE_MARKS_3.md) standing on the row, centred on its place.
+                            if (Smufl.Named(direction.Text) is not { } named) continue;
+                            var symbolBaseline = above ? baseline + named.Bottom * sp : baseline;
+                            var symbolLeft = Free(slot, above, symbolBaseline, x + Smufl.NoteheadWidth(NoteType.Quarter) * sp / 2 - named.Width * sp / 2, named.Width * sp);
+                            items.Add(new GlyphItem(named.Glyph, symbolLeft, symbolBaseline, 4 * sp));
+                            continue;
+                        }
+
                         if (direction.Kind is DirectionKind.Segno or DirectionKind.Coda)
                         {
                             // The sign stands on its baseline (the coda reaches a little below it), centred on its place.
