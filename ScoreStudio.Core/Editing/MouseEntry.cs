@@ -59,7 +59,7 @@ public static class MouseEntry
         if (diatonic < 0) return null;
 
         var step = diatonic % 7;
-        var alter = Notation.KeyAlter(measure.KeyFifths, step);
+        var alter = Notation.KeyAlter(measure, step);
         var name = $"{"CDEFGAB"[step]}{(alter > 0 ? "#" : alter < 0 ? "b" : "")}{(diatonic / 7).ToString(CultureInfo.InvariantCulture)}";
 
         var headY = staffTop + (8 - position) * sp / 2;

@@ -542,6 +542,25 @@ public sealed class ProjectFileServiceTests : IDisposable
         Assert.Equal((1, 2, true, "flat", "7", "slash", true), (figured.PositionNumerator, figured.DurationNumerator, figured.Parentheses, figure.Prefix, figure.Number, figure.Suffix, figure.Extend));
     }
 
+    [Fact]
+    public void Load_Version26File_ShowsNumbers_AndTimeKeyAndTranspositionChangesSurviveSaveAndReopen()
+    {
+        var old = ProjectFileService.Parse("""{ "SchemaVersion": 26, "Parts": [ { "Measures": [ {} ] } ] }""").Parts[0].Measures[0];
+        Assert.Equal((TimeSymbol.Normal, "", false, 0, (ScoreTranspose?)null), (old.TimeSymbol, old.BeatsText, old.SenzaMisura, old.KeyAccidentals.Count, old.Transpose));
+
+        var project = ScoreProject.CreateNew();
+        var measure = project.Parts[0].Measures[1];
+        (measure.TimeSymbol, measure.BeatsText, measure.SenzaMisura) = (TimeSymbol.Cut, "2+2", true);
+        measure.KeyAccidentals.Add(new ScoreKeyAccidental { Step = "C", Alter = 1 });
+        measure.Transpose = new ScoreTranspose { Diatonic = -2, Chromatic = -3 };
+        var path = PathFor("time.scoreproj");
+        ProjectFileService.Save(path, project);
+
+        var reopened = ProjectFileService.Load(path).Parts[0].Measures[1];
+        Assert.Equal((TimeSymbol.Cut, "2+2", true, "C1", -3), (reopened.TimeSymbol, reopened.BeatsText, reopened.SenzaMisura,
+            string.Join(",", reopened.KeyAccidentals.Select(k => k.Step + k.Alter)), reopened.Transpose!.Chromatic));
+    }
+
     public static TheoryData<string, string> InvalidFiles => new()
     {
         { "", "비어 있습니다" },
@@ -643,6 +662,11 @@ public sealed class ProjectFileServiceTests : IDisposable
         { """{ "SchemaVersion": 26, "Parts": [ { "Measures": [ { "FiguredBass": [ { "Staff": 1, "Figures": [ { "Number": "6" } ] } ] } ] } ] }""", "숫자 저음" },
         { """{ "SchemaVersion": 26, "Parts": [ { "Measures": [ { "FiguredBass": [ { "Figures": [ null ] } ] } ] } ] }""", "숫자 저음" },
         { """{ "SchemaVersion": 26, "Parts": [ { "Measures": [ { "FiguredBass": [ null ] } ] } ] }""", "숫자 저음" },
+        { """{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "BeatsText": "3-2" } ] } ] }""", "박자표·조표" },
+        { """{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "KeyAccidentals": [ { "Step": "H", "Alter": 1 } ] } ] } ] }""", "박자표·조표" },
+        { """{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "KeyAccidentals": [ { "Step": "F", "Alter": 3 } ] } ] } ] }""", "박자표·조표" },
+        { """{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "Transpose": { "Chromatic": 30 } } ] } ] }""", "박자표·조표" },
+        { """{ "SchemaVersion": 27, "Parts": [ { "Measures": [ { "TimeSymbol": "Star" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": "Tablature" } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
         { """{ "SchemaVersion": 2, "Parts": [ { "Staves": [ { "Clef": 7 } ] } ] }""", "손상되었거나 형식이 올바르지 않습니다" },
     };

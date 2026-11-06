@@ -63,3 +63,36 @@
 - 새 샘플 `samples/musicxml/cue-figured-bass.musicxml`을 경고 없이 가져오고, 저장·다시 열기·내보내기 왕복 결과가 같다. 내보낸 22개 파일이 MusicXML 4.0 스키마를 통과한다.
 - 그리기 테스트: 큐 음표 크기, 숫자 저음의 위치와 쌓는 순서(`MarksLayoutTests`).
 - 알려진 한계: 큐 음표의 빔은 보통 굵기다. 숫자 저음 연장선은 마디를 넘어가지 않는다.
+
+## 3. 박자표·조표·이조 (스키마 26 → 27)
+
+### 데이터 모델 (`ScoreMeasure`)
+| 추가 항목 | 설명 |
+|---|---|
+| `TimeSymbol` (`Normal`, `Common`, `Cut`, `SingleNumber`) | 박자표를 숫자, C, ¢, 위 숫자 하나 중 무엇으로 보이는지 |
+| `BeatsText` | "3+2"처럼 적힌 위 숫자(박자 계산은 합한 값 `Numerator`로 한다). 보통은 빈 문자열 |
+| `SenzaMisura` | 박자 없음: 박자표를 그리지 않는다. 마디 길이는 앞 박자를 따르고, 넘치는 음표는 "박자표보다 긴 마디"처럼 그대로 둔다. |
+| `KeyAccidentals` (`ScoreKeyAccidental`: 음이름, 변화) | 올림표·내림표가 차례대로가 아닌 조표(F♯과 B♭ 등). 이때 `KeyFifths`는 0이다. 올림표가 8개 이상인 이론상의 조표(fifths 9 등)도 겹올림표가 섞인 이 형태로 가져온다. |
+| `Transpose` | 이 마디부터 바뀌는 이조 악기 설정(예: B♭ 클라리넷 → A 클라리넷). 첫 설정은 지금처럼 `ScorePart.Transpose`에 둔다. |
+
+### MusicXML
+| MusicXML | ScoreStudio |
+|---|---|
+| `time symbol="common"·"cut"·"single-number"` | `TimeSymbol` |
+| `beats`의 "3+2" (박자 종류가 하나일 때) | `BeatsText`. 여러 박자를 이은 박자표(3/4+2/8)는 여전히 합한 박자로 가져오고 경고한다. |
+| `time/senza-misura` | `SenzaMisura` |
+| `key`의 `key-step`·`key-alter` 쌍, 또는 fifths가 ±8~±14인 조표 | `KeyAccidentals` |
+| 곡 중간의 다른 `transpose` | 그 마디의 `Transpose` |
+
+- 다음 마디로 이어지는 값(박자 기호, 다른 조표)은 MusicXML처럼 바뀔 때까지 유지한다. 편집에서 박자표나 조표를 새로 정하면 숫자 박자표, 보통 조표로 돌아간다.
+- 음표의 임시표 계산(화면, 내보내기, 음표 넣기)은 다른 조표의 변화음을 따른다.
+
+### 그리기
+- C·¢: SMuFL `timeSigCommon`·`timeSigCutCommon`을 가운데 줄에 그린다. 위 숫자 하나: 가운데 줄에 숫자만 그린다. "3+2": 숫자와 `timeSigPlus`를 이어 그린다.
+- 다른 조표: 각 변화음을 그 음의 올림표(내림표는 내림표) 자리에 적힌 순서대로 그린다.
+
+### 결과 (2026-11-06)
+- 새 샘플 `samples/musicxml/time-key-transpose.musicxml`을 경고 없이 가져오고, 저장·다시 열기·내보내기 왕복 결과가 같다. 내보낸 23개 파일이 MusicXML 4.0 스키마를 통과한다.
+- 그리기 테스트: C·¢·+ 글리프, 박자 없음 마디에 박자표 없음, 다른 조표의 위치(`MarksLayoutTests`). 편집 테스트: 다른 조표의 변화음을 따라 음표가 들어가고, 박자표를 새로 정하면 숫자 박자표가 된다.
+- `.musx` 220개: 경고 없는 파일 184 → 194.
+- 알려진 한계: 다른 조표에서 보통 조표로 바뀔 때 제자리표로 지우는 표시를 그리지 않는다. 이조 변경은 저장·내보내기만 하고 화면 표시는 바뀌지 않는다(음표는 기보음대로).

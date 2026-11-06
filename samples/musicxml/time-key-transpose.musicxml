@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- ScoreStudio sample: common and cut time, a 3+2 signature, senza misura, a single-number signature, a key that is not a run of sharps or flats, and a clarinet changing from B flat to A, as Finale writes them (docs/FINALE_MARKS_3.md). -->
+<score-partwise version="4.0">
+  <work><work-title>박자표·조표·이조</work-title></work>
+  <part-list><score-part id="P1"><part-name>클라리넷</part-name><score-instrument id="P1-I1"><instrument-name>Clarinet in B♭</instrument-name></score-instrument></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><key-step>F</key-step><key-alter>1</key-alter><key-step>B</key-step><key-alter>-1</key-alter></key>
+        <time symbol="common"><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+        <transpose><diatonic>-1</diatonic><chromatic>-2</chromatic></transpose>
+      </attributes>
+      <note><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><accidental>natural</accidental></note>
+    </measure>
+    <measure number="2">
+      <attributes>
+        <key><fifths>0</fifths></key>
+        <time symbol="cut"><beats>2</beats><beat-type>2</beat-type></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+    </measure>
+    <measure number="3">
+      <attributes>
+        <time><beats>3+2</beats><beat-type>8</beat-type></time>
+      </attributes>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>3</duration><voice>1</voice><type>quarter</type><dot/></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <measure number="4">
+      <attributes>
+        <time><senza-misura/></time>
+      </attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+    </measure>
+    <measure number="5">
+      <attributes>
+        <key><fifths>1</fifths></key>
+        <time symbol="single-number"><beats>3</beats><beat-type>4</beat-type></time>
+        <transpose><diatonic>-2</diatonic><chromatic>-3</chromatic></transpose>
+      </attributes>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>6</duration><voice>1</voice><type>half</type><dot/></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

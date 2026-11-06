@@ -332,7 +332,7 @@ internal static class NotePreparation
                     var pitch = Notation.Spell(note, measure.KeyFifths);
                     pitch = pitch with { Octave = pitch.Octave - note.OctaveShift };
                     var position = Notation.StaffPosition(pitch, clef);
-                    var current = inForce.TryGetValue(pitch.Diatonic, out var known) ? known : Notation.KeyAlter(measure.KeyFifths, pitch.Step);
+                    var current = inForce.TryGetValue(pitch.Diatonic, out var known) ? known : Notation.KeyAlter(measure, pitch.Step);
                     var tieKey = (partIndex, staff, note.Voice, note.MidiPitch);
 
                     int? accidental = null;
@@ -571,7 +571,7 @@ internal static class NotePreparation
                 "half" => NoteType.Half, "quarter" => NoteType.Quarter, "16th" => NoteType.Sixteenth,
                 "32nd" => NoteType.ThirtySecond, "64th" => NoteType.SixtyFourth, _ => NoteType.Eighth,
             };
-            int? accidental = pitch.Alter != Notation.KeyAlter(measure.KeyFifths, pitch.Step) ? pitch.Alter : null;
+            int? accidental = pitch.Alter != Notation.KeyAlter(measure, pitch.Step) ? pitch.Alter : null;
             graces.Add(new PreparedGrace(Notation.StaffPosition(pitch, clef), accidental, type, grace.Slash, grace.Chord, grace.After));
         }
 

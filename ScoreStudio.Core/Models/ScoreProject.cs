@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 26;
+    public const int CurrentSchemaVersion = 27;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -217,6 +217,31 @@ public enum ClefType
     Percussion,
 }
 
+/// <summary>How a time signature is shown. Stored in project files by name.</summary>
+public enum TimeSymbol
+{
+    Normal,
+
+    /// <summary>C, for 4/4.</summary>
+    Common,
+
+    /// <summary>¢ (alla breve), for 2/2.</summary>
+    Cut,
+
+    /// <summary>Only the top number.</summary>
+    SingleNumber,
+}
+
+/// <summary>One accidental of a key signature that is not a run of sharps or flats.</summary>
+public sealed class ScoreKeyAccidental
+{
+    /// <summary>"C" … "B".</summary>
+    public string Step { get; set; } = "F";
+
+    /// <summary>−2 … 2.</summary>
+    public int Alter { get; set; } = 1;
+}
+
 /// <summary>The shape of a notehead other than the usual oval. Stored in project files by name.</summary>
 public enum NoteheadShape
 {
@@ -237,6 +262,24 @@ public sealed class ScoreMeasure
 
     /// <summary>A fermata over the measure's closing barline (docs/FINALE_MARKS_3.md).</summary>
     public bool BarlineFermata { get; set; }
+
+    /// <summary>How the time signature is shown: as numbers, as C or ¢, or as its top number only (docs/FINALE_MARKS_3.md).</summary>
+    public TimeSymbol TimeSymbol { get; set; }
+
+    /// <summary>The time signature's top as written when it is not just <see cref="Numerator"/>, e.g. "3+2"; empty otherwise.</summary>
+    public string BeatsText { get; set; } = "";
+
+    /// <summary>No time signature (senza misura): none is shown, and the measure's length is whatever its notes take.</summary>
+    public bool SenzaMisura { get; set; }
+
+    /// <summary>
+    /// A key signature that is not a run of sharps or flats, e.g. F♯ and B♭ together; empty for an ordinary key, which
+    /// <see cref="KeyFifths"/> gives. With these, <see cref="KeyFifths"/> is 0.
+    /// </summary>
+    public List<ScoreKeyAccidental> KeyAccidentals { get; set; } = new();
+
+    /// <summary>A transposing instrument's interval from this measure on, when it changes here; null when it does not.</summary>
+    public ScoreTranspose? Transpose { get; set; }
 
     public int Numerator { get; set; } = 4;
     public int Denominator { get; set; } = 4;

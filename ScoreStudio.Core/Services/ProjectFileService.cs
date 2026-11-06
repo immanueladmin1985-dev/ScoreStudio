@@ -141,7 +141,7 @@ public static class ProjectFileService
         // version 5: beams, so older files show flags until the score is imported again; version 6: hidden part names
         // and part groups; version 7: source page layout; version 8: lyric positions and lyric font size; version 9:
         // chord symbol positions; version 10: where extender lines end; version 16: dynamics, text and tempo marks,
-        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs; version 24: fingerings, accidental marks, buzz rolls, barline fermatas; version 25: cue notes, figured bass).
+        // hairpins, slurs and articulations; version 17: transposing instruments; version 18: grace notes; version 19: let-ring ties, tremolos, ornaments; version 20: arpeggios, technical marks, rehearsal marks; version 21: glissandos and lines; version 22: percussion clefs, staff lines, unpitched notes, noteheads and instruments; version 23: pedals, segno and coda signs; version 24: fingerings, accidental marks, buzz rolls, barline fermatas; version 25: cue notes, figured bass; version 26: time symbols, beats text, senza misura, other keys, transposition changes).
         // Validate and the model defaults fill them in, and a version 1–3 "Lyric" becomes verse 1.
         // Saving always writes the current version.
     }
@@ -307,6 +307,12 @@ public static class ProjectFileService
                     throw Corrupt($"{where}의 숨긴 보표 정보가 올바르지 않습니다.");
 
                 ValidateMarks(measure, part.Staves.Count, where);
+                measure.BeatsText ??= "";
+                measure.KeyAccidentals ??= new List<ScoreKeyAccidental>();
+                if (!Enum.IsDefined(measure.TimeSymbol) || measure.BeatsText.Length > 20 || measure.BeatsText.Any(c => !char.IsDigit(c) && c != '+')
+                    || measure.KeyAccidentals.Count > 7 || measure.KeyAccidentals.Any(k => k is null || k.Step is not ("C" or "D" or "E" or "F" or "G" or "A" or "B") || k.Alter is < -2 or > 2)
+                    || measure.Transpose is { } transposeChange && (transposeChange.Diatonic is < -14 or > 14 || transposeChange.Chromatic is < -24 or > 24 || transposeChange.OctaveChange is < -3 or > 3))
+                    throw Corrupt($"{where}의 박자표·조표·이조 정보가 올바르지 않습니다.");
                 measure.FiguredBass ??= new List<ScoreFiguredBass>();
                 foreach (var figured in measure.FiguredBass)
                 {

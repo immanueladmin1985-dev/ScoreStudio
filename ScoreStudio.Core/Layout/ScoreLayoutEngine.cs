@@ -94,7 +94,8 @@ public static partial class ScoreLayoutEngine
     private sealed record MeasureInfo(
         int Number, int Numerator, int Denominator, bool ShowsTimeSignature, int[] Keys, bool KeyChanges,
         bool ClefChangeAtStart, bool SystemBreak, bool PageBreak, bool RepeatStart, bool RepeatEnd, ScoreVolta? Volta,
-        double? SourceWidth = null, int[]? PreviousKeys = null);
+        double? SourceWidth = null, int[]? PreviousKeys = null,
+        TimeSymbol Symbol = TimeSymbol.Normal, string BeatsText = "", IReadOnlyList<ScoreKeyAccidental>?[]? OtherKeys = null);
 
     /// <summary>Room for a repeat sign (thick line, thin line, dots and a gap), in staff spaces.</summary>
     private const double RepeatSignWidth = 2.2;
@@ -395,14 +396,22 @@ public static partial class ScoreLayoutEngine
             var previous = i > 0 ? infos[i - 1] : null;
             var changed = previous is null
                 || previous.Numerator != measure.Numerator
-                || previous.Denominator != measure.Denominator;
+                || previous.Denominator != measure.Denominator
+                || previous.Symbol != measure.TimeSymbol
+                || previous.BeatsText != measure.BeatsText
+                || (i > 0 && project.Parts.First(p => p.Measures.Count > i - 1).Measures[i - 1].SenzaMisura != measure.SenzaMisura);
 
             // Keys are per part (transposing instruments differ); a part without this measure keeps its last key.
             var keys = project.Parts.Select((part, p) =>
                 part.Measures.Count > i ? part.Measures[i].KeyFifths : previous?.Keys[p] ?? 0).ToArray();
-            var keyChanges = previous is not null && !keys.SequenceEqual(previous.Keys);
+            // Another key (docs/FINALE_MARKS_3.md) per part, or null for an ordinary one.
+            var otherKeys = project.Parts.Select(part => part.Measures.Count > i && part.Measures[i].KeyAccidentals.Count > 0
+                ? (IReadOnlyList<ScoreKeyAccidental>?)part.Measures[i].KeyAccidentals : null).ToArray();
+            static string Describe(IReadOnlyList<ScoreKeyAccidental>? key) => key is null ? "" : string.Join(",", key.Select(k => k.Step + k.Alter));
+            var keyChanges = previous is not null && (!keys.SequenceEqual(previous.Keys)
+                || !otherKeys.Select(Describe).SequenceEqual((previous.OtherKeys ?? new IReadOnlyList<ScoreKeyAccidental>?[otherKeys.Length]).Select(Describe)));
             var parts = project.Parts.Where(p => p.Measures.Count > i).Select(p => p.Measures[i]).ToList();
-            infos.Add(new MeasureInfo(measure.Number, measure.Numerator, measure.Denominator, changed, keys, keyChanges,
+            infos.Add(new MeasureInfo(measure.Number, measure.Numerator, measure.Denominator, changed && !measure.SenzaMisura, keys, keyChanges,
                 ClefChangeAtStart: i > 0 && parts.Any(m => m.ClefChanges.Any(c => c.PositionNumerator == 0)),
                 SystemBreak: i > 0 && parts.Any(m => m.SystemBreak),
                 PageBreak: i > 0 && parts.Any(m => m.PageBreak),
@@ -410,7 +419,7 @@ public static partial class ScoreLayoutEngine
                 RepeatEnd: parts.Any(m => m.RepeatEnd),
                 Volta: parts.Select(m => m.Volta).FirstOrDefault(v => v is not null),
                 SourceWidth: parts.Select(m => m.SourceWidth).FirstOrDefault(w => w is not null),
-                PreviousKeys: previous?.Keys));
+                PreviousKeys: previous?.Keys, Symbol: measure.TimeSymbol, BeatsText: measure.BeatsText, OtherKeys: otherKeys));
         }
 
         return infos;
@@ -424,13 +433,26 @@ public static partial class ScoreLayoutEngine
     }
 
 
-    private static double TimeSignatureWidth(MeasureInfo m) =>
-        Math.Max(Smufl.TimeSigWidth(m.Numerator), Smufl.TimeSigWidth(m.Denominator));
+    private const double TimeSigCommonWidth = 1.696;
+    private const double TimeSigPlusWidth = 2.0;
+
+    private static double TimeSignatureWidth(MeasureInfo m) => m.Symbol switch
+    {
+        TimeSymbol.Common or TimeSymbol.Cut => TimeSigCommonWidth,
+        TimeSymbol.SingleNumber => Smufl.TimeSigWidth(m.Numerator),
+        _ => Math.Max(TopWidth(m), Smufl.TimeSigWidth(m.Denominator)),
+    };
+
+    /// <summary>Width of a time signature's top: its number, or numbers joined by "+" ("3+2").</summary>
+    private static double TopWidth(MeasureInfo m) => m.BeatsText.Length == 0
+        ? Smufl.TimeSigWidth(m.Numerator)
+        : m.BeatsText.Sum(c => c == '+' ? TimeSigPlusWidth : Smufl.TimeSigWidth(c - '0'));
 
     /// <summary>Width of a key signature in staff spaces: one column per sharp or flat.</summary>
     private static double KeySignatureWidth(int fifths) => Math.Min(Math.Abs(fifths), 7) * 1.0;
 
-    private static double KeySignatureWidth(MeasureInfo m) => m.Keys.Select(KeySignatureWidth).DefaultIfEmpty(0).Max();
+    private static double KeySignatureWidth(MeasureInfo m) =>
+        m.Keys.Select((key, p) => m.OtherKeys?[p] is { } other ? other.Count : KeySignatureWidth(key)).DefaultIfEmpty(0).Max();
 
     /// <summary>Gap between the naturals that cancel the old key and the new key's accidentals, in staff spaces.</summary>
     private const double KeyCancelGap = 0.5;
@@ -451,6 +473,7 @@ public static partial class ScoreLayoutEngine
         m.Keys.Select((key, p) =>
         {
             var cancelled = m.PreviousKeys is { } previous && p < previous.Length ? CancelledAccidentals(previous[p], key) : 0;
+            if (m.OtherKeys?[p] is { } other) return (double)other.Count;
             return cancelled + KeySignatureWidth(key) + (cancelled > 0 && key != 0 ? KeyCancelGap : 0);
         }).DefaultIfEmpty(0).Max();
 
@@ -742,7 +765,7 @@ public static partial class ScoreLayoutEngine
         {
             var first = measures[plan.FirstMeasure];
             var keyX = left + (1 + clefWidth + 1) * sp;
-            DrawKeySignature(items, slots, slots.Select(s => s.Clef).ToArray(), staffTops, first.Keys, keyX, sp);
+            DrawKeySignature(items, slots, slots.Select(s => s.Clef).ToArray(), staffTops, first.Keys, keyX, sp, first.OtherKeys);
             // The header ends with the time signature, or with a start repeat after it.
             var headerEnd = left + plan.HeaderWidth - (first.RepeatStart ? RepeatSignWidth * sp : 0);
             if (first.ShowsTimeSignature)
@@ -785,7 +808,7 @@ public static partial class ScoreLayoutEngine
                 if (info.KeyChanges)
                 {
                     var clefsHere = slots.Select(s => clefs.ClefAt(s.PartIndex, s.StaffIndex, index, Rational.Zero)).ToArray();
-                    DrawKeyChange(items, slots, clefsHere, staffTops, info.PreviousKeys, info.Keys, prefixX, sp);
+                    DrawKeyChange(items, slots, clefsHere, staffTops, info.PreviousKeys, info.Keys, prefixX, sp, info.OtherKeys);
                     prefixX += (KeyChangeWidth(info) + 1) * sp;
                 }
 
@@ -832,10 +855,20 @@ public static partial class ScoreLayoutEngine
         items.Add(new GlyphItem(Smufl.ClefGlyph(clef), x, staffTop + Smufl.ClefLine(clef) * sp, 4 * sp * scale));
 
     private static void DrawKeySignature(
-        List<DrawItem> items, List<StaffSlot> slots, ClefType[] clefs, double[] staffTops, int[] keys, double x, double sp)
+        List<DrawItem> items, List<StaffSlot> slots, ClefType[] clefs, double[] staffTops, int[] keys, double x, double sp,
+        IReadOnlyList<ScoreKeyAccidental>?[]? otherKeys = null)
     {
         for (var i = 0; i < slots.Count; i++)
         {
+            if (otherKeys?[slots[i].PartIndex] is { } other)
+            {
+                // Another key (docs/FINALE_MARKS_3.md): each accidental where that step's sharp or flat goes.
+                var places = Notation.KeyAccidentalPositions(other, clefs[i]);
+                for (var a = 0; a < places.Count; a++)
+                    items.Add(new GlyphItem(Smufl.Accidental(other[a].Alter), x + a * sp, StaffY(staffTops[i], places[a], sp), 4 * sp));
+                continue;
+            }
+
             var fifths = keys[slots[i].PartIndex];
             var glyph = fifths > 0 ? Smufl.AccidentalSharp : Smufl.AccidentalFlat;
             var positions = Notation.KeySignaturePositions(fifths, clefs[i]);
@@ -846,7 +879,8 @@ public static partial class ScoreLayoutEngine
 
     /// <summary>A key change in mid-score: naturals cancelling the old key's dropped accidentals, then the new key.</summary>
     private static void DrawKeyChange(
-        List<DrawItem> items, List<StaffSlot> slots, ClefType[] clefs, double[] staffTops, int[]? previous, int[] keys, double x, double sp)
+        List<DrawItem> items, List<StaffSlot> slots, ClefType[] clefs, double[] staffTops, int[]? previous, int[] keys, double x, double sp,
+        IReadOnlyList<ScoreKeyAccidental>?[]? otherKeys = null)
     {
         for (var i = 0; i < slots.Count; i++)
         {
@@ -858,7 +892,7 @@ public static partial class ScoreLayoutEngine
                 items.Add(new GlyphItem(Smufl.AccidentalNatural, x + a * sp, StaffY(staffTops[i], naturals[a], sp), 4 * sp));
 
             var keyX = x + (cancelled > 0 && to != 0 ? cancelled + KeyCancelGap : cancelled) * sp;
-            DrawKeySignature(items, new List<StaffSlot> { slots[i] }, new[] { clefs[i] }, new[] { staffTops[i] }, keys, keyX, sp);
+            DrawKeySignature(items, new List<StaffSlot> { slots[i] }, new[] { clefs[i] }, new[] { staffTops[i] }, keys, keyX, sp, otherKeys);
         }
     }
 
@@ -1299,7 +1333,32 @@ public static partial class ScoreLayoutEngine
         var boxWidth = TimeSignatureWidth(measure);
         foreach (var staffTop in staffTops)
         {
-            DrawDigits(items, measure.Numerator, x + (boxWidth - Smufl.TimeSigWidth(measure.Numerator)) / 2 * sp, staffTop + sp, sp);
+            switch (measure.Symbol)
+            {
+                case TimeSymbol.Common or TimeSymbol.Cut:
+                    items.Add(new GlyphItem(measure.Symbol == TimeSymbol.Common ? Smufl.TimeSigCommon : Smufl.TimeSigCut, x, staffTop + 2 * sp, 4 * sp));
+                    continue;
+                case TimeSymbol.SingleNumber:
+                    DrawDigits(items, measure.Numerator, x, staffTop + 2 * sp, sp);
+                    continue;
+            }
+
+            var topX = x + (boxWidth - TopWidth(measure)) / 2 * sp;
+            if (measure.BeatsText.Length == 0)
+            {
+                DrawDigits(items, measure.Numerator, topX, staffTop + sp, sp);
+            }
+            else
+            {
+                // "3+2": digits and plus signs as written.
+                foreach (var c in measure.BeatsText)
+                {
+                    var (glyph, width) = c == '+' ? (Smufl.TimeSigPlus, TimeSigPlusWidth) : ((char)(Smufl.TimeSig0 + (c - '0')), Smufl.TimeSigWidth(c - '0'));
+                    items.Add(new GlyphItem(glyph, topX, staffTop + sp, 4 * sp));
+                    topX += width * sp;
+                }
+            }
+
             DrawDigits(items, measure.Denominator, x + (boxWidth - Smufl.TimeSigWidth(measure.Denominator)) / 2 * sp, staffTop + 3 * sp, sp);
         }
     }

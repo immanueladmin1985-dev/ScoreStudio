@@ -50,4 +50,5 @@
 - [ ] 페달·세뇨·코다: `samples\musicxml\pedal-segno-coda.musicxml`을 열어 아래 보표 밑의 "Ped. … *", 갈고리와 "^"가 있는 페달 선, "Sost.", 위쪽의 세뇨·코다 기호가 Finale와 비슷한가? 페달이 있는 실제 피아노곡(MusicXML 또는 .musx)으로도 확인한다.
 - [ ] 운지 번호 등: `samples\musicxml\finale-marks-3.musicxml`을 열어 운지 번호(화음 위 1·2·5, 아래 4-1), 강세·약세·부드러운 악센트, 숨표·중간 휴지, 재즈 기호, 슐라이퍼·하이든 턴·셰이크, 트릴 위의 ♯, 버즈 롤 z, 마디선 위 페르마타가 Finale와 비슷한가?
 - [ ] 큐 음표·숫자 저음: `samples\musicxml\cue-figured-bass.musicxml`을 열어 작은 큐 음표와 통주저음 아래의 숫자(6, 6/4 연장선, 7\\, ♯, (♮3))가 Finale와 비슷한가?
+- [ ] 박자표·조표: `samples\musicxml\time-key-transpose.musicxml`을 열어 C·¢ 박자 기호, 3+2/8, 박자 없음 마디, 숫자 하나 박자표, F♯·B♭이 섞인 조표가 Finale와 비슷한가? 4/4를 C로 쓰는 실제 Finale 악보가 있으면 C로 보이는가?
 - 원본 .musx 파일은 바뀌지 않는다. 문제가 있는 파일은 저작권이 있을 수 있으므로 저장소에 올리지 않고 결과만 기록한다.

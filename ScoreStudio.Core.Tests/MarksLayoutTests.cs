@@ -410,4 +410,27 @@ public sealed class MarksLayoutTests
         Assert.Equal(six.X, four.X, 6);
         Assert.True(six.X > heads[1].X && six.X < heads[1].X + Smufl.NoteheadWidth(NoteType.Half) * Sp, "under the note it figures");
     }
+
+    [Fact]
+    public void TimeSymbols_PlusSignatures_SenzaMisura_AndOtherKeys_AreDrawn()
+    {
+        var project = Score(4, Note("C5", 72, 0, 4));
+        var m = project.Parts[0].Measures;
+        m[0].TimeSymbol = TimeSymbol.Common;
+        m[0].KeyAccidentals.Add(new ScoreKeyAccidental { Step = "F", Alter = 1 });
+        m[0].KeyAccidentals.Add(new ScoreKeyAccidental { Step = "B", Alter = -1 });
+        (m[1].Numerator, m[1].Denominator, m[1].TimeSymbol) = (2, 2, TimeSymbol.Cut);
+        (m[2].Numerator, m[2].Denominator, m[2].BeatsText) = (5, 8, "3+2");
+        (m[3].Numerator, m[3].Denominator, m[3].SenzaMisura) = (5, 8, true);
+        foreach (var measure in m.Skip(1)) measure.Events.Add(Note("C5", 72, 0, 2));
+        var (page, top) = Layout(project);
+
+        Assert.Equal(top + 2 * Sp, Glyph(page, Smufl.TimeSigCommon).Y, 6);
+        Glyph(page, Smufl.TimeSigCut);
+        Glyph(page, Smufl.TimeSigPlus);
+        // Only one 8: the senza misura measure shows no time signature.
+        Assert.Single(page.Items.OfType<GlyphItem>(), g => g.Glyph == (char)(Smufl.TimeSig0 + 8));
+        Assert.Equal(top, Glyph(page, Smufl.AccidentalSharp).Y, 6);        // F5, the top line
+        Assert.Equal(top + 2 * Sp, Glyph(page, Smufl.AccidentalFlat).Y, 6); // B4, the middle line
+    }
 }

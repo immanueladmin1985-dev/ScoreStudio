@@ -433,6 +433,21 @@ public sealed class ScoreEditorTests : IDisposable
     }
 
     [Fact]
+    public void NotesInAnotherKey_TakeItsAccidentals_AndANewTimeSignatureIsWrittenAsNumbers()
+    {
+        var project = ScoreProject.CreateNew();
+        project.Parts[0].Measures[0].KeyAccidentals.Add(new ScoreKeyAccidental { Step = "C", Alter = 1 });
+        project.Parts[0].Measures[0].TimeSymbol = TimeSymbol.Common;
+        var editor = new ScoreEditor(project);
+
+        Assert.True(editor.EnterNoteAt(new EditPosition(0, 0, 1, 0, R(0)), 5 * 7 + 0).Done); // the place of C5
+        Assert.Equal("C#5", project.Parts[0].Measures[0].Events.Single().NotationSpelling);
+
+        Assert.True(editor.SetTime(3, 4).Done);
+        Assert.Equal(TimeSymbol.Normal, project.Parts[0].Measures[0].TimeSymbol);
+    }
+
+    [Fact]
     public void NotesOnAPercussionStaff_AreUnpitched_AndCannotBeTransposed()
     {
         var project = ScoreProject.CreateNew();

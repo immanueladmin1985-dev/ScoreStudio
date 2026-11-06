@@ -327,6 +327,35 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void TimeSymbols_OtherKeys_SenzaMisura_AndTranspositionChanges_AreKept()
+    {
+        var result = MusicXmlImporter.ImportFile(Sample("time-key-transpose.musicxml"));
+        Assert.Empty(result.Warnings);
+        var part = result.Project.Parts[0];
+        var m = part.Measures;
+
+        Assert.Equal(new[] { "4/4 Common", "2/2 Cut", "5/8 Normal 3+2", "5/8 Normal 3+2 senza", "3/4 SingleNumber" },
+            m.Select(x => $"{x.Numerator}/{x.Denominator} {x.TimeSymbol}{(x.BeatsText.Length > 0 ? " " + x.BeatsText : "")}{(x.SenzaMisura ? " senza" : "")}"));
+        Assert.Equal(new[] { "F1,B-1", "", "", "", "" }, m.Select(x => string.Join(",", x.KeyAccidentals.Select(k => k.Step + k.Alter))));
+        Assert.Equal(new[] { 0, 0, 0, 0, 1 }, m.Select(x => x.KeyFifths));
+
+        // The B flat clarinet changes to A in measure 5.
+        Assert.Equal((-1, -2), (part.Transpose!.Diatonic, part.Transpose.Chromatic));
+        Assert.Equal(new[] { false, false, false, false, true }, m.Select(x => x.Transpose is not null));
+        Assert.Equal((-2, -3), (m[4].Transpose!.Diatonic, m[4].Transpose!.Chromatic));
+    }
+
+    [Theory]
+    [InlineData(9, "F2,C2,G1,D1,A1,E1,B1")]
+    [InlineData(-10, "B-2,E-2,A-2,D-1,G-1,C-1,F-1")]
+    public void KeysOfMoreThanSevenSharpsOrFlats_BecomeOtherKeysWithDoubles(int fifths, string expected)
+    {
+        var result = MusicXmlImporter.ImportXml(OneMeasure($"<key><fifths>{fifths}</fifths></key>", ""), "조표");
+        Assert.Empty(result.Warnings);
+        Assert.Equal(expected, string.Join(",", result.Project.Parts[0].Measures[0].KeyAccidentals.Select(k => k.Step + k.Alter)));
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));
@@ -1040,6 +1069,7 @@ public sealed class MusicXmlImporterTests : IDisposable
     [InlineData("percussion.musicxml")]
     [InlineData("finale-marks-2.musicxml")]
     [InlineData("finale-marks-3.musicxml")]
+    [InlineData("time-key-transpose.musicxml")]
     [InlineData("cue-figured-bass.musicxml")]
     [InlineData("pedal-segno-coda.musicxml")]
     public void ImportedProject_SurvivesSaveAndReopen(string file)

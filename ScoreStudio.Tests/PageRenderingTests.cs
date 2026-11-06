@@ -170,6 +170,7 @@ public sealed class PageRenderingTests
     [InlineData("pedal-segno-coda")]
     [InlineData("finale-marks-3")]
     [InlineData("cue-figured-bass")]
+    [InlineData("time-key-transpose")]
     public void ImportedMusicXml_DrawsClefsAndNoteheadsWhereTheLayoutPutsThem(string sample)
     {
         RunSta(() =>

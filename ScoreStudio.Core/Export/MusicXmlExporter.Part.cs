@@ -550,10 +550,33 @@ public static partial class MusicXmlExporter
         {
             var attributes = new XElement("attributes");
             if (previous is null) attributes.Add(new XElement("divisions", _divisions.ToString(CultureInfo.InvariantCulture)));
-            if (previous is null || previous.KeyFifths != measure.KeyFifths)
-                attributes.Add(new XElement("key", new XElement("fifths", measure.KeyFifths)));
-            if (previous is null || previous.Numerator != measure.Numerator || previous.Denominator != measure.Denominator)
-                attributes.Add(new XElement("time", new XElement("beats", measure.Numerator), new XElement("beat-type", measure.Denominator)));
+            static string Accidentals(ScoreMeasure m) => string.Join(",", m.KeyAccidentals.Select(k => k.Step + k.Alter));
+            if (previous is null || previous.KeyFifths != measure.KeyFifths || Accidentals(previous) != Accidentals(measure))
+            {
+                // Another key (docs/FINALE_MARKS_3.md) is written step by step.
+                attributes.Add(measure.KeyAccidentals.Count == 0
+                    ? new XElement("key", new XElement("fifths", measure.KeyFifths))
+                    : new XElement("key", measure.KeyAccidentals.SelectMany(k => new[] { new XElement("key-step", k.Step), new XElement("key-alter", k.Alter) })));
+            }
+
+            if (previous is null || previous.Numerator != measure.Numerator || previous.Denominator != measure.Denominator
+                || previous.TimeSymbol != measure.TimeSymbol || previous.BeatsText != measure.BeatsText || previous.SenzaMisura != measure.SenzaMisura)
+            {
+                var time = new XElement("time");
+                if (measure.SenzaMisura)
+                {
+                    time.Add(new XElement("senza-misura"));
+                }
+                else
+                {
+                    if (measure.TimeSymbol != TimeSymbol.Normal)
+                        time.Add(new XAttribute("symbol", measure.TimeSymbol switch { TimeSymbol.Common => "common", TimeSymbol.Cut => "cut", _ => "single-number" }));
+                    time.Add(new XElement("beats", measure.BeatsText.Length > 0 ? measure.BeatsText : measure.Numerator.ToString(CultureInfo.InvariantCulture)),
+                        new XElement("beat-type", measure.Denominator));
+                }
+
+                attributes.Add(time);
+            }
             if (previous is null && _staves > 1) attributes.Add(new XElement("staves", _staves));
             if (previous is null)
             {
@@ -573,7 +596,7 @@ public static partial class MusicXmlExporter
                 attributes.Add(details);
             }
 
-            if (previous is null && _part.Transpose is { } transpose)
+            if ((previous is null ? _part.Transpose : measure.Transpose) is { } transpose)
             {
                 var element = new XElement("transpose", new XElement("diatonic", transpose.Diatonic), new XElement("chromatic", transpose.Chromatic));
                 if (transpose.OctaveChange != 0) element.Add(new XElement("octave-change", transpose.OctaveChange));
@@ -649,7 +672,7 @@ public static partial class MusicXmlExporter
                 {
                     var pitch = Notation.Spell(note, measure.KeyFifths);
                     var line = (pitch.Step, pitch.Octave);
-                    var current = alters.TryGetValue(line, out var alter) ? alter : Notation.KeyAlter(measure.KeyFifths, pitch.Step);
+                    var current = alters.TryGetValue(line, out var alter) ? alter : Notation.KeyAlter(measure, pitch.Step);
                     if (_tieStops.Contains(note) && Start(note).Sign == 0) continue;
                     if (pitch.Alter == current) continue;
 

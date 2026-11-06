@@ -402,6 +402,12 @@ public static class MusicXmlImporter
         private int _denominator = 4;
         private int _keyFifths;
 
+        // The time signature's look and another key's accidentals carry over to later measures, like the key and time.
+        private TimeSymbol _timeSymbol;
+        private string _beatsText = "";
+        private bool _senzaMisura;
+        private List<ScoreKeyAccidental> _keyAccidentals = new();
+
         /// <summary>Staff and voice of the last note that was not a chord member.</summary>
         private int _chordStaff;
         private int _chordVoice = 1;
@@ -435,6 +441,12 @@ public static class MusicXmlImporter
         private int _measureIndex;
 
         private ScoreTranspose? _transpose;
+
+        /// <summary>The interval in force, after any change in mid-piece.</summary>
+        private ScoreTranspose? _currentTranspose;
+
+        /// <summary>The measure being read.</summary>
+        private ScoreMeasure? _currentMeasure;
 
         /// <summary>Glissandos and slides started and not yet stopped, by element name and number.</summary>
         private readonly Dictionary<string, (int Index, ScoreMeasure Measure, ScoreGlissando Glissando)> _openGlissandos = new();
@@ -551,7 +563,13 @@ public static class MusicXmlImporter
             if (!isNumeric)
                 Warn("숫자가 아닌 마디 번호는 순서 번호로 바꿈");
 
-            var measure = new ScoreMeasure { Number = number, Numerator = _numerator, Denominator = _denominator, KeyFifths = _keyFifths };
+            var measure = new ScoreMeasure
+            {
+                Number = number, Numerator = _numerator, Denominator = _denominator, KeyFifths = _keyFifths,
+                TimeSymbol = _timeSymbol, BeatsText = _beatsText, SenzaMisura = _senzaMisura,
+                KeyAccidentals = _keyAccidentals.Select(k => new ScoreKeyAccidental { Step = k.Step, Alter = k.Alter }).ToList(),
+            };
+            _currentMeasure = measure;
             _measureIndex = index;
             // The measure's width in the source's layout, in tenths of a staff space.
             if (double.TryParse((string?)element.Attribute("width"), NumberStyles.Float, CultureInfo.InvariantCulture, out var width)
@@ -641,10 +659,19 @@ public static class MusicXmlImporter
                 {
                     _keyFifths = fifths;
                     measure.KeyFifths = fifths;
+                    _keyAccidentals = new();
+                    measure.KeyAccidentals = new();
+                }
+                else if ((TheoreticalKey(key) ?? ReadKeyAccidentals(key)) is { Count: > 0 } accidentals)
+                {
+                    // Another key (docs/FINALE_MARKS_3.md): its steps and alterations, in the order written.
+                    _keyFifths = measure.KeyFifths = 0;
+                    _keyAccidentals = accidentals;
+                    measure.KeyAccidentals = accidentals.Select(k => new ScoreKeyAccidental { Step = k.Step, Alter = k.Alter }).ToList();
                 }
                 else
                 {
-                    Warn("일반적이지 않은 조표는 가져오지 않음");
+                    Warn("읽을 수 없는 조표는 이전 조표를 유지함");
                 }
             }
 
@@ -703,26 +730,68 @@ public static class MusicXmlImporter
                 return;
             }
 
-            if (_transpose is null) _transpose = read;
-            else if ((_transpose.Diatonic, _transpose.Chromatic, _transpose.OctaveChange) != (read.Diatonic, read.Chromatic, read.OctaveChange))
-                Warn("곡 중간에 바뀌는 이조 악기 설정은 처음 것만 가져옴");
+            if (_transpose is null)
+            {
+                _transpose = _currentTranspose = read;
+            }
+            else if ((_currentTranspose!.Diatonic, _currentTranspose.Chromatic, _currentTranspose.OctaveChange) != (read.Diatonic, read.Chromatic, read.OctaveChange))
+            {
+                // An instrument change (docs/FINALE_MARKS_3.md): the new interval holds from this measure on.
+                _currentTranspose = read;
+                _currentMeasure!.Transpose = read;
+            }
+        }
+
+        /// <summary>
+        /// A key of more than seven sharps or flats (fifths 9 is G♯ major): every step sharp (or flat), the first ones
+        /// in the usual order doubled. Null when the key is not one of these.
+        /// </summary>
+        private static List<ScoreKeyAccidental>? TheoreticalKey(XElement key)
+        {
+            if (!int.TryParse(key.Element("fifths")?.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var fifths) || Math.Abs(fifths) is <= 7 or > 14)
+                return null;
+            var order = fifths > 0 ? "FCGDAEB" : "BEADGCF";
+            var doubled = Math.Abs(fifths) - 7;
+            return order.Select((step, i) => new ScoreKeyAccidental { Step = step.ToString(), Alter = Math.Sign(fifths) * (i < doubled ? 2 : 1) }).ToList();
+        }
+
+        /// <summary>The accidentals of a key given step by step (key-step, key-alter), or an empty list for one not kept.</summary>
+        private static List<ScoreKeyAccidental> ReadKeyAccidentals(XElement key)
+        {
+            var steps = key.Elements("key-step").Select(e => e.Value.Trim().ToUpperInvariant()).ToList();
+            var alters = key.Elements("key-alter").Select(e => decimal.TryParse(e.Value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var a) ? a : 99).ToList();
+            if (steps.Count == 0 || steps.Count != alters.Count || steps.Count > 7
+                || steps.Any(st => st is not ("C" or "D" or "E" or "F" or "G" or "A" or "B")) || alters.Any(a => a is < -2 or > 2 || a != Math.Round(a)))
+                return new();
+            return steps.Select((step, i) => new ScoreKeyAccidental { Step = step, Alter = (int)alters[i] }).ToList();
         }
 
         private void ReadTime(XElement time, ScoreMeasure measure)
         {
             if (time.Element("senza-misura") is not null)
             {
-                Warn("박자 없음(senza misura)은 가져오지 않음");
+                // Senza misura (docs/FINALE_MARKS_3.md): no time signature is shown; the measure keeps the length before.
+                _senzaMisura = measure.SenzaMisura = true;
                 return;
             }
 
+            _senzaMisura = measure.SenzaMisura = false;
+            _timeSymbol = measure.TimeSymbol = (string?)time.Attribute("symbol") switch
+            {
+                "common" => TimeSymbol.Common,
+                "cut" => TimeSymbol.Cut,
+                "single-number" => TimeSymbol.SingleNumber,
+                _ => TimeSymbol.Normal,
+            };
             var beats = time.Elements("beats").Select(b => b.Value.Trim()).ToList();
             var beatTypes = time.Elements("beat-type").Select(b => b.Value.Trim()).ToList();
             if (beats.Count == 0 || beatTypes.Count == 0)
                 return;
 
-            if (beats.Count > 1 || beats[0].Contains('+'))
-                Warn("복합 박자 표기(3+2 등)는 합한 박자로 가져옴");
+            // "3+2" over one beat type is kept as written; several signatures in one (3/4 + 2/8) become their sum.
+            _beatsText = measure.BeatsText = beats.Count == 1 && beats[0].Contains('+') && beats[0].All(c => char.IsDigit(c) || c == '+') && beats[0].Length <= 20 ? beats[0] : "";
+            if (beats.Count > 1)
+                Warn("여러 박자를 이은 박자표(3/4+2/8 등)는 합한 박자로 가져옴");
 
             int numerator;
             int denominator;

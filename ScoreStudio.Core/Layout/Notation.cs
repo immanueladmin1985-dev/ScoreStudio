@@ -150,6 +150,28 @@ public static partial class Notation
     /// <summary>Vertical staff position in half spaces: 0 is the bottom line, 8 the top line, odd numbers are spaces.</summary>
     public static int StaffPosition(SpelledPitch pitch, ClefType clef) => pitch.Diatonic - BottomLineDiatonic(clef);
 
+    /// <summary>The alteration a measure's key signature gives to a step, for an ordinary key or another one (docs/FINALE_MARKS_3.md).</summary>
+    public static int KeyAlter(ScoreMeasure measure, int step) =>
+        measure.KeyAccidentals.Count == 0
+            ? KeyAlter(measure.KeyFifths, step)
+            : measure.KeyAccidentals.FirstOrDefault(k => k.Step == "CDEFGAB"[step].ToString())?.Alter ?? 0;
+
+    /// <summary>
+    /// Staff positions of another key's accidentals for a clef, in the order written: each where a sharp (or a flat)
+    /// of that step goes in an ordinary key.
+    /// </summary>
+    public static IReadOnlyList<int> KeyAccidentalPositions(IReadOnlyList<ScoreKeyAccidental> accidentals, ClefType clef)
+    {
+        if (clef == ClefType.Percussion) return Array.Empty<int>();
+        var sharps = KeySignaturePositions(7, clef);
+        var flats = KeySignaturePositions(-7, clef);
+        return accidentals.Select(a =>
+        {
+            var step = "CDEFGAB".IndexOf(a.Step, StringComparison.Ordinal);
+            return a.Alter < 0 ? flats[Array.IndexOf(FlatOrder, step)] : sharps[Array.IndexOf(SharpOrder, step)];
+        }).ToList();
+    }
+
     /// <summary>The alteration the key signature gives to a step (C = 0 … B = 6).</summary>
     public static int KeyAlter(int keyFifths, int step)
     {

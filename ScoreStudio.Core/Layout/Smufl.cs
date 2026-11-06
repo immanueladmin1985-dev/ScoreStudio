@@ -23,6 +23,9 @@ public static class Smufl
     public const char BracketTop = '\uE003';
     public const char BracketBottom = '\uE004';
     public const char TimeSig0 = '\uE080';
+    public const char TimeSigCommon = '\uE08A';
+    public const char TimeSigCut = '\uE08B';
+    public const char TimeSigPlus = '\uE08C';
 
     public const char NoteheadDoubleWhole = '\uE0A0';
     public const char NoteheadWhole = '\uE0A2';

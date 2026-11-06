@@ -830,7 +830,7 @@ public sealed partial class ScoreEditor
     private ScoreEvent? NoteAt(EditPosition at, int octave, int step, int keyFifths)
     {
         var unpitched = new ClefTimeline(Project).ClefAt(at.Part, at.Staff, at.Measure, at.Position) == ClefType.Percussion;
-        var alter = unpitched ? 0 : Notation.KeyAlter(keyFifths, step);
+        var alter = unpitched ? 0 : IsValid(at with { Position = Rational.Zero }) ? Notation.KeyAlter(MeasureAt(at), step) : Notation.KeyAlter(keyFifths, step);
         var midi = 12 * (octave + 1) + StepSemitones[step] + alter;
         if (midi is < 0 or > 127) return null;
         var accidental = alter > 0 ? new string('#', alter) : new string('b', -alter);
@@ -850,6 +850,8 @@ public sealed partial class ScoreEditor
             part.Measures.Insert(index + 1, new ScoreMeasure
             {
                 Number = source.Number + 1, Numerator = source.Numerator, Denominator = source.Denominator, KeyFifths = source.KeyFifths,
+                TimeSymbol = source.TimeSymbol, BeatsText = source.BeatsText, SenzaMisura = source.SenzaMisura,
+                KeyAccidentals = source.KeyAccidentals.Select(k => new ScoreKeyAccidental { Step = k.Step, Alter = k.Alter }).ToList(),
             });
             for (var m = index + 2; m < part.Measures.Count; m++) part.Measures[m].Number++;
         }

@@ -34,6 +34,7 @@ public sealed partial class ScoreEditor
                     var key = part.Measures[m].KeyFifths + fifths - old;
                     if (key is < -7 or > 7) return $"'{part.Name}' 파트(이조 악기)의 조표가 ♯·♭ 7개를 넘게 되어 바꿀 수 없습니다.";
                     part.Measures[m].KeyFifths = key;
+                    part.Measures[m].KeyAccidentals = new List<ScoreKeyAccidental>();
                 }
             }
 
@@ -81,6 +82,8 @@ public sealed partial class ScoreEditor
         var oldLength = MeasureLength(measure);
         var oldUnit = BeatUnit(measure);
         (measure.Numerator, measure.Denominator) = (numerator, denominator);
+        // A new time signature is written as numbers (C, ¢ and "3+2" belong to the old one).
+        (measure.TimeSymbol, measure.BeatsText, measure.SenzaMisura) = (TimeSymbol.Normal, "", false);
         var length = MeasureLength(measure);
         var rebeam = BeatUnit(measure) != oldUnit;
 
