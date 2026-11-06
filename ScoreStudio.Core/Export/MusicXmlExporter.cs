@@ -113,7 +113,7 @@ public static partial class MusicXmlExporter
         return result.Warnings;
     }
 
-    private static bool IsSourceFile(ScoreProject project, string fullPath)
+    internal static bool IsSourceFile(ScoreProject project, string fullPath)
     {
         if (string.IsNullOrWhiteSpace(project.ImportedFrom) || !Path.IsPathRooted(project.ImportedFrom)) return false;
         try

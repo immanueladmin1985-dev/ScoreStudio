@@ -601,6 +601,33 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Writes the score as it is laid out on screen to a vector PDF (docs/PDF_EXPORT.md).</summary>
+    private void ExportPdf_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Filter = "PDF (*.pdf)|*.pdf",
+            DefaultExt = ".pdf",
+            FileName = $"{SafeFileName(Project.Title)}.pdf",
+            Title = "PDF 내보내기"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            Project.Title = TitleInput.Text.Trim();
+            var layout = ScoreLayoutEngine.Layout(Project);
+            PdfExporter.ExportFile(Project, layout, PdfFonts.Windows(System.IO.Path.Combine(MusicFont.FontDirectory, MusicFont.FileName)), dialog.FileName);
+            StatusText.Content = $"PDF 내보내기 완료: {System.IO.Path.GetFileName(dialog.FileName)} ({layout.Pages.Count}쪽)";
+        }
+        catch (Exception ex)
+        {
+            ShowFileError("PDF로 내보낼 수 없습니다.", "내보내기 오류", ex);
+            StatusText.Content = "PDF 내보내기 실패";
+        }
+    }
+
     private void TitleInput_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_updatingUi) return;
@@ -1269,7 +1296,7 @@ public partial class MainWindow : Window
     private void About_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(this,
-            "ScoreStudio 개발 버전\n\n지원: 프로젝트 저장/열기, 악보 화면(오선·음자리표·조표·박자표·마디선·음표·쉼표·빔·붙임줄·잇단음표·가사·코드 이름·도돌이표·볼타·음자리표 변경·옥타브 기호, 여러 페이지, 확대/축소), MusicXML 가져오기·내보내기, PDF·그림에서 악보 인식(Audiveris), 키보드와 마우스로 음표·쉼표 입력과 고치기, 조표·박자표·음자리표 바꾸기, 잇단음표·가사·코드 이름 입력(실행 취소 포함), 셈여림·크레셴도·이음줄·아티큘레이션·글자 지시·메트로놈 넣기(표현·아티큘레이션·스마트 도형 도구)\n아직 가져오지 않음: 장식음 기호, 페달, 세뇨·코다 등(가져오기 결과 창에 경고로 표시)\nFinale 파일(.musx) 열기(denigma 사용)\n아직 지원하지 않음: PDF 출력",
+            "ScoreStudio 개발 버전\n\n지원: 프로젝트 저장/열기, 악보 화면(오선·음자리표·조표·박자표·마디선·음표·쉼표·빔·붙임줄·잇단음표·가사·코드 이름·도돌이표·볼타·음자리표 변경·옥타브 기호, 여러 페이지, 확대/축소), MusicXML 가져오기·내보내기, PDF·그림에서 악보 인식(Audiveris), 키보드와 마우스로 음표·쉼표 입력과 고치기, 조표·박자표·음자리표 바꾸기, 잇단음표·가사·코드 이름 입력(실행 취소 포함), 셈여림·크레셴도·이음줄·아티큘레이션·글자 지시·메트로놈 넣기(표현·아티큘레이션·스마트 도형 도구)\n가져오지 못한 것은 가져오기 결과 창에 경고로 표시\nFinale 파일(.musx) 열기(denigma 사용)\nPDF 내보내기(파일 > 내보내기 > PDF)",
             "개발 상태", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
