@@ -355,6 +355,9 @@ public static class Smufl
         ["arrowBlackDown"] = ('\uEB64', 0.912, 0.0, 2.108),
     };
 
+    /// <summary>The SMuFL names <see cref="Named"/> knows, for a menu of symbols to put in.</summary>
+    public static IReadOnlyCollection<string> NamedGlyphNames => NamedGlyphs.Keys;
+
     /// <summary>A named glyph for a &lt;symbol&gt; direction, or null for one ScoreStudio does not draw.</summary>
     public static (char Glyph, double Width, double Bottom, double Top)? Named(string name) =>
         NamedGlyphs.TryGetValue(name, out var glyph) ? glyph : null;

@@ -33,6 +33,9 @@ public enum EditorCommand
     Fingering, Tremolo1, Tremolo2, Tremolo3, TremoloOff, BuzzRoll, Arpeggio, ArpeggioUp, ArpeggioDown, NonArpeggio,
     AccidentalMarkSharp, AccidentalMarkFlat, AccidentalMarkNatural, AccidentalMarkOff, CueNotes,
     TimeAbbreviation, BarlineFermata,
+
+    // The last tools (docs/MARK_TOOLS.md): the window asks for the value, except senza misura.
+    OtherKey, CompoundTime, SenzaMisura, Transposition, ChordFrame, FiguredBass, MusicSymbol,
 }
 
 /// <summary>Where a key works: everywhere, or only with one tool.</summary>
@@ -235,6 +238,13 @@ public sealed class KeyMap
         new(EditorCommand.CueNotes, "음표", "큐 음표로 바꾸기·되돌리기"),
         new(EditorCommand.TimeAbbreviation, "마디", "4/4를 C, 2/2를 ¢로 쓰기·되돌리기"),
         new(EditorCommand.BarlineFermata, "마디", "마디 끝 마디선의 페르마타"),
+        new(EditorCommand.OtherKey, "마디", "다른 조표(F♯ B♭ 등)..."),
+        new(EditorCommand.CompoundTime, "마디", "3+2 같은 박자표..."),
+        new(EditorCommand.SenzaMisura, "마디", "박자 없음(senza misura) 켜기·끄기"),
+        new(EditorCommand.Transposition, "마디", "이 마디부터 이조 악기 바꾸기..."),
+        new(EditorCommand.ChordFrame, "코드", "코드 다이어그램 넣기..."),
+        new(EditorCommand.FiguredBass, "표현", "숫자 저음 넣기..."),
+        new(EditorCommand.MusicSymbol, "표현", "음악 기호 넣기..."),
     };
 
     public static CommandInfo Info(EditorCommand command) => Commands.First(c => c.Command == command);
@@ -337,6 +347,8 @@ public sealed class KeyMap
         Bind(KeyScope.Expression, EditorCommand.RehearsalMark, K("R"));
         Bind(KeyScope.Expression, EditorCommand.Segno, K("S"));
         Bind(KeyScope.Expression, EditorCommand.Coda, K("C"));
+        Bind(KeyScope.Expression, EditorCommand.FiguredBass, K("F"));
+        Bind(KeyScope.Expression, EditorCommand.MusicSymbol, K("Y"));
         Bind(KeyScope.Articulation, EditorCommand.Fingering, K("N"));
         Bind(KeyScope.Articulation, EditorCommand.Tremolo1, K("D1"));
         Bind(KeyScope.Articulation, EditorCommand.Tremolo2, K("D2"));
@@ -528,6 +540,7 @@ public static class CommandRunner
         EditorCommand.CueNotes => editor.ToggleCue(),
         EditorCommand.TimeAbbreviation => editor.ToggleTimeAbbreviation(),
         EditorCommand.BarlineFermata => editor.ToggleBarlineFermata(),
+        EditorCommand.SenzaMisura => editor.ToggleSenzaMisura(),
         EditorCommand.BreakBeam => editor.BreakBeam(),
         EditorCommand.GraceNote => editor.MakeGrace(),
         EditorCommand.HideEntry => editor.ToggleHidden(),

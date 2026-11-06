@@ -314,4 +314,74 @@ public sealed class ScoreEditorMarksTests
         editor.Undo();
         Assert.Equal("B E B E B E B E", Beams());
     }
+
+    [Fact]
+    public void OtherKeys_PlusTimeSignatures_SenzaMisura_AndTranspositionChanges_AreSetFromTheCursor()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 0));
+        Assert.True(editor.SetOtherKey("F# Bb").Done);
+        Assert.All(editor.Project.Parts[0].Measures, m => Assert.Equal("F1,B-1", string.Join(",", m.KeyAccidentals.Select(k => k.Step + k.Alter))));
+        Assert.False(editor.SetOtherKey("H#").Done);
+        Assert.False(editor.SetOtherKey("F# F#").Done);
+        Assert.True(editor.SetKey(2).Done);
+        Assert.All(editor.Project.Parts[0].Measures, m => Assert.Empty(m.KeyAccidentals));
+
+        editor.PlaceCursor(0, 0, 1, R(0));
+        Assert.True(editor.SetTime("2+2", 4).Done);
+        Assert.Equal((4, 4, "2+2"), (Measure(editor, 1).Numerator, Measure(editor, 1).Denominator, Measure(editor, 1).BeatsText));
+        Assert.Equal("", Measure(editor, 0).BeatsText);
+        Assert.False(editor.SetTime("2-2", 4).Done);
+        Assert.True(editor.SetTime(4, 4).Done); // back to plain numbers
+        Assert.Equal("", Measure(editor, 1).BeatsText);
+
+        Assert.True(editor.ToggleSenzaMisura().Done);
+        Assert.True(Measure(editor, 1).SenzaMisura);
+        Assert.True(editor.ToggleSenzaMisura().Done);
+        Assert.False(Measure(editor, 1).SenzaMisura);
+
+        Assert.True(editor.SetTransposition(-2, -3).Done);
+        Assert.Equal((-2, -3), (Measure(editor, 1).Transpose!.Diatonic, Measure(editor, 1).Transpose!.Chromatic));
+        editor.PlaceCursor(0, 0, 0, R(0));
+        Assert.True(editor.SetTransposition(-1, -2).Done);
+        Assert.Equal(-2, editor.Project.Parts[0].Transpose!.Chromatic);
+    }
+
+    [Theory]
+    [InlineData("x32010", 6, null, "5:3 4:2 3:0 2:1 1:0")]
+    [InlineData("8 10 10 9 8 8", 6, 8, "6:8 5:10 4:10 3:9 2:8 1:8")]
+    public void ChordDiagrams_AreReadAsGuitaristsWriteThem(string text, int strings, int? firstFret, string notes)
+    {
+        var frame = ScoreEditor.ParseFrame(text, out _)!;
+        Assert.Equal((strings, firstFret), (frame.Strings, frame.FirstFret));
+        Assert.Equal(notes, string.Join(" ", frame.Notes.Select(n => $"{n.String}:{n.Fret}")));
+        Assert.Null(ScoreEditor.ParseFrame("xxxxxx", out _));
+        Assert.Null(ScoreEditor.ParseFrame("x3z010", out _));
+    }
+
+    [Fact]
+    public void ChordDiagrams_FiguredBass_AndSymbols_ArePutAtTheChord()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 0));
+        Assert.False(editor.SetChordFrame("x32010").Done); // no chord symbol there yet
+        Assert.True(editor.EnterChordSymbol("C").Done);
+        editor.Select(At(0, 0));
+        Assert.True(editor.SetChordFrame("x32010").Done);
+        Assert.Equal(5, Measure(editor, 0).ChordSymbols.Single().Frame!.Notes.Count);
+
+        Assert.True(editor.SetFiguredBass("6_ #4 7/").Done);
+        var figured = Measure(editor, 0).FiguredBass.Single();
+        Assert.Equal(new[] { "|6||_", "sharp|4||", "|7|slash|" }, figured.Figures.Select(f => $"{f.Prefix}|{f.Number}|{f.Suffix}|{(f.Extend ? "_" : "")}"));
+        Assert.Equal(1, figured.DurationNumerator); // the extension runs over the quarter note
+        Assert.False(editor.SetFiguredBass("6x").Done);
+        Assert.True(editor.SetFiguredBass("").Done);
+        Assert.Empty(Measure(editor, 0).FiguredBass);
+
+        Assert.True(editor.ToggleSymbol("repeat1Bar").Done);
+        Assert.Equal("repeat1Bar", Measure(editor, 0).Directions.Single(d => d.Kind == DirectionKind.Symbol).Text);
+        Assert.True(editor.ToggleSymbol("repeat1Bar").Done);
+        Assert.DoesNotContain(Measure(editor, 0).Directions, d => d.Kind == DirectionKind.Symbol);
+        Assert.False(editor.ToggleSymbol("noSuchGlyph").Done);
+    }
 }

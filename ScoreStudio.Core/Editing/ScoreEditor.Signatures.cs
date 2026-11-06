@@ -47,7 +47,20 @@ public sealed partial class ScoreEditor
     /// become a whole-measure rest; a longer measure gets rests after a full voice; a shorter one loses the rests past its
     /// end, and is refused when notes would be cut.
     /// </summary>
-    public EditResult SetTime(int numerator, int denominator)
+    public EditResult SetTime(int numerator, int denominator) => SetTime(numerator, denominator, "");
+
+    /// <summary>
+    /// A time signature written as numbers joined by "+" ("3+2" over 8, docs/MARK_TOOLS.md): the measure has their sum.
+    /// </summary>
+    public EditResult SetTime(string beatsText, int denominator)
+    {
+        var parts = beatsText.Replace(" ", "").Split('+');
+        if (parts.Length < 2 || parts.Any(p => !int.TryParse(p, out var n) || n < 1))
+            return EditResult.Refused("3+2처럼 숫자를 +로 이어 쓰세요.");
+        return SetTime(parts.Sum(int.Parse), denominator, string.Join("+", parts));
+    }
+
+    private EditResult SetTime(int numerator, int denominator, string beatsText)
     {
         if (numerator is < 1 or > 32 || !TimeDenominators.Contains(denominator)) return EditResult.Refused("지원하지 않는 박자표입니다.");
         if (!CursorIsValid()) return EditResult.Refused("박자표를 바꿀 마디를 먼저 누르세요.");
@@ -55,7 +68,8 @@ public sealed partial class ScoreEditor
         var first = Cursor.Measure;
         var measures = Project.Parts[Cursor.Part].Measures;
         var old = (measures[first].Numerator, measures[first].Denominator);
-        if (old == (numerator, denominator)) return EditResult.Refused($"이미 {numerator}/{denominator}박자입니다.");
+        if (old == (numerator, denominator) && measures[first].BeatsText == beatsText && !measures[first].SenzaMisura)
+            return EditResult.Refused($"이미 {(beatsText.Length > 0 ? beatsText : numerator.ToString())}/{denominator}박자입니다.");
         var last = first;
         while (last + 1 < measures.Count && (measures[last + 1].Numerator, measures[last + 1].Denominator) == old) last++;
 
@@ -67,13 +81,14 @@ public sealed partial class ScoreEditor
                 {
                     if (Retime(part.Measures[m], numerator, denominator) is { } why)
                         return $"{m + 1}마디{(Project.Parts.Count > 1 ? $"('{part.Name}' 파트)" : "")}: {why}";
+                    part.Measures[m].BeatsText = beatsText;
                 }
             }
 
             if (!CursorIsValid()) Cursor = Cursor with { Position = Rational.Zero };
             if (Selection is { } selected && ChordAt(selected) is null) ClearSelection();
             return null;
-        }, () => $"{Span(first, last)}의 박자표를 바꿨습니다: {numerator}/{denominator}");
+        }, () => $"{Span(first, last)}의 박자표를 바꿨습니다: {(beatsText.Length > 0 ? beatsText : numerator.ToString())}/{denominator}");
     }
 
     /// <summary>Gives one measure a new time signature; returns why not, or null.</summary>

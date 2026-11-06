@@ -183,6 +183,7 @@ public partial class MainWindow : Window
                     break;
                 case EditorTool.Chord:
                     ToolCommandsMenu.Items.Add(CommandMenuItem(EditorCommand.ChordBox));
+                    ToolCommandsMenu.Items.Add(CommandMenuItem(EditorCommand.ChordFrame));
                     break;
                 case EditorTool.KeySignature:
                     foreach (var item in KeyItems()) ToolCommandsMenu.Items.Add(item);
@@ -273,6 +274,42 @@ public partial class MainWindow : Window
             case EditorCommand.RehearsalText:
                 if (MarkPrompts.AskRehearsal(this) is { } rehearsal) RunEdit(ed => ed.SetRehearsal(rehearsal));
                 break;
+            case EditorCommand.OtherKey:
+                if (MarkPrompts.AskLine(this, "다른 조표", "변화음을 적힌 순서대로 띄어 씁니다(예: F# Bb, C## G#). #은 올림, b는 내림, n은 제자리입니다.") is { } key)
+                    RunEdit(ed => ed.SetOtherKey(key));
+                break;
+            case EditorCommand.CompoundTime:
+                if (MarkPrompts.AskLine(this, "3+2 같은 박자표", "위 숫자들을 +로 잇고 / 뒤에 아래 숫자를 씁니다(예: 3+2/8, 2+2+3/8).", "3+2/8") is { } time)
+                {
+                    var parts = time.Split('/');
+                    if (parts.Length == 2 && int.TryParse(parts[1].Trim(), out var denominator)) RunEdit(ed => ed.SetTime(parts[0], denominator));
+                    else StatusText.Content = "3+2/8처럼 / 뒤에 아래 숫자를 쓰세요.";
+                }
+
+                break;
+            case EditorCommand.Transposition:
+                if (MarkPrompts.AskChoice(this, "이조 악기 바꾸기", "이 마디부터의 악기 조(첫 마디면 파트의 조)", ScoreEditor.Transpositions.Select(t => t.Name)) is { } transposition)
+                {
+                    var (_, diatonic, chromatic) = ScoreEditor.Transpositions[transposition.Index];
+                    RunEdit(ed => ed.SetTransposition(diatonic, chromatic));
+                }
+
+                break;
+            case EditorCommand.ChordFrame:
+                if (MarkPrompts.AskLine(this, "코드 다이어그램", "아래 줄(6번 줄)부터 x(치지 않음), 0(개방현), 프렛 번호를 씁니다(예: x32010, 프렛이 10 이상이면 8 10 10 9 8 8처럼 띄어 씀). 비우면 지웁니다.") is { } frame)
+                    RunEdit(ed => ed.SetChordFrame(frame));
+                break;
+            case EditorCommand.FiguredBass:
+                if (MarkPrompts.AskLine(this, "숫자 저음", "위에서부터 띄어 씁니다(예: 6 4, #6, b7, 6+, 7/). 연장선은 숫자 뒤에 _를 붙입니다. 비우면 지웁니다.") is { } figures)
+                    RunEdit(ed => ed.SetFiguredBass(figures));
+                break;
+            case EditorCommand.MusicSymbol:
+            {
+                var names = Smufl.NamedGlyphNames.ToList();
+                if (MarkPrompts.AskChoice(this, "음악 기호 넣기", "넣을 기호(SMuFL 이름). 같은 자리에 다시 넣으면 지웁니다.", names, askBelow: true) is { } symbol)
+                    RunEdit(ed => ed.ToggleSymbol(names[symbol.Index], !symbol.Below));
+                break;
+            }
         }
     }
 
@@ -295,7 +332,7 @@ public partial class MainWindow : Window
             .Select(d => CommandItem(d, () => RunEdit(ed => ed.SetDynamic(d))))
             .Append(CommandItem("글자 넣기...", () => RunWindowCommand(EditorCommand.ExpressionText)))
             .Append(CommandItem("메트로놈 표시 넣기...", () => RunWindowCommand(EditorCommand.TempoMark)))
-            .Concat(new[] { EditorCommand.RehearsalMark, EditorCommand.RehearsalText, EditorCommand.Segno, EditorCommand.Coda }
+            .Concat(new[] { EditorCommand.RehearsalMark, EditorCommand.RehearsalText, EditorCommand.Segno, EditorCommand.Coda, EditorCommand.FiguredBass, EditorCommand.MusicSymbol }
                 .Select(c => CommandItem(KeyMap.Info(c).Name, () => RunCommand(c))))
             .Append(CommandItem("이 자리의 셈여림·글자 지우기", () => RunEdit(ed => ed.ClearExpressions())));
 
@@ -644,10 +681,15 @@ public partial class MainWindow : Window
             var value = fifths;
             yield return CommandItem(ScoreEditor.KeyName(value), () => RunEdit(ed => ed.SetKey(value)));
         }
+
+        yield return CommandItem(KeyMap.Info(EditorCommand.OtherKey).Name, () => RunCommand(EditorCommand.OtherKey));
+        yield return CommandItem(KeyMap.Info(EditorCommand.Transposition).Name, () => RunCommand(EditorCommand.Transposition));
     }
 
     private IEnumerable<MenuItem> TimeItems() =>
-        TimeSignatures.Select(t => CommandItem($"{t.Numerator}/{t.Denominator}", () => RunEdit(ed => ed.SetTime(t.Numerator, t.Denominator))));
+        TimeSignatures.Select(t => CommandItem($"{t.Numerator}/{t.Denominator}", () => RunEdit(ed => ed.SetTime(t.Numerator, t.Denominator))))
+            .Concat(new[] { EditorCommand.CompoundTime, EditorCommand.SenzaMisura, EditorCommand.TimeAbbreviation }
+                .Select(c => CommandItem(KeyMap.Info(c).Name, () => RunCommand(c))));
 
     private IEnumerable<MenuItem> ClefItems() =>
         Enum.GetValues<ClefType>().Select(clef => CommandItem(ScoreEditor.ClefName(clef), () => RunEdit(ed => ed.SetClef(clef))));

@@ -68,6 +68,25 @@ public static class MarkPrompts
         return ok ? text.Text : null;
     }
 
+    /// <summary>Asks for one line of text with a hint; null when cancelled.</summary>
+    public static string? AskLine(Window owner, string title, string hint, string initial = "")
+    {
+        var text = new TextBox { MinWidth = 260, Text = initial, Margin = new Thickness(0, 4, 0, 8) };
+        return Show(owner, title, new UIElement[] { new TextBlock { Text = hint, TextWrapping = TextWrapping.Wrap, MaxWidth = 420 }, text }, text) ? text.Text : null;
+    }
+
+    /// <summary>Asks to choose one of a list (and, when asked, whether it goes below); null when cancelled.</summary>
+    public static (int Index, bool Below)? AskChoice(Window owner, string title, string hint, IEnumerable<string> choices, bool askBelow = false)
+    {
+        var list = new ComboBox { MinWidth = 300, Margin = new Thickness(0, 4, 0, 8) };
+        foreach (var choice in choices) list.Items.Add(choice);
+        list.SelectedIndex = 0;
+        var below = new CheckBox { Content = "보표 아래에", Margin = new Thickness(0, 0, 0, 8), Visibility = askBelow ? Visibility.Visible : Visibility.Collapsed };
+        var focus = new TextBox { Visibility = Visibility.Collapsed };
+        var ok = Show(owner, title, new UIElement[] { new TextBlock { Text = hint }, list, below, focus }, focus);
+        return ok && list.SelectedIndex >= 0 ? (list.SelectedIndex, below.IsChecked == true) : null;
+    }
+
     private static bool Show(Window owner, string title, IEnumerable<UIElement> rows, TextBox focus)
     {
         var panel = new StackPanel { Margin = new Thickness(16) };
