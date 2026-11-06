@@ -47,7 +47,7 @@ public static partial class ScoreLayoutEngine
         for (var i = 0; i < placed.Count; i++)
         {
             var chord = placed[i];
-            if (chord.Chord is { Articulations.Count: 0, Fingerings.Count: 0, AccidentalMark: null }) continue;
+            if (chord.Chord is { Articulations.Count: 0, Fingerings.Count: 0, AccidentalMark: null } or { Hidden: true }) continue;
             var (top, bottom) = DrawChordArticulations(items, chord.Chord, chord.X, chord.Top, chord.Bottom, staffTops[chord.Slot], sp);
             placed[i] = chord with { Top = Math.Min(chord.Top, top), Bottom = Math.Max(chord.Bottom, bottom) };
         }

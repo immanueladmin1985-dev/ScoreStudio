@@ -19,7 +19,7 @@ public enum EditorCommand
     NoteC, NoteD, NoteE, NoteF, NoteG, NoteA, NoteB, AddC, AddD, AddE, AddF, AddG, AddA, AddB,
     ChooseWhole, ChooseHalf, ChooseQuarter, ChooseEighth, ChooseSixteenth, ChooseThirtySecond, EnterRest, MouseEntry,
 
-    // Finale has these; ScoreStudio does not yet.
+    // Speedy Entry commands that change a note's kind (docs/MARK_TOOLS.md).
     BreakBeam, GraceNote, HideEntry,
 
     // Articulation, Expression and Smart Shape tools (docs/SPRINT_FINALE_MARKS.md, 2-C): Finale's metatool keys.
@@ -184,9 +184,9 @@ public sealed class KeyMap
         new(EditorCommand.ChooseThirtySecond, "길이", "32분음표 고르기"),
         new(EditorCommand.EnterRest, "길이", "쉼표 넣기"),
         new(EditorCommand.MouseEntry, "도구", "마우스 입력 켜기·끄기"),
-        new(EditorCommand.BreakBeam, "음표", "빔 끊기·잇기", Supported: false),
-        new(EditorCommand.GraceNote, "음표", "꾸밈음", Supported: false),
-        new(EditorCommand.HideEntry, "음표", "음표 숨기기", Supported: false),
+        new(EditorCommand.BreakBeam, "음표", "앞 음표와의 빔 끊기·잇기"),
+        new(EditorCommand.GraceNote, "음표", "다음 음표의 꾸밈음으로 바꾸기"),
+        new(EditorCommand.HideEntry, "음표", "음표·쉼표 숨기기·보이기"),
         new(EditorCommand.ArticulationStaccato, "아티큘레이션", "스타카토"),
         new(EditorCommand.ArticulationStaccatissimo, "아티큘레이션", "스타카티시모"),
         new(EditorCommand.ArticulationAccent, "아티큘레이션", "악센트"),
@@ -282,6 +282,9 @@ public sealed class KeyMap
         Bind(KeyScope.Speedy, EditorCommand.Respell, K("D9"), K("NumPad9"));
         Bind(KeyScope.Speedy, EditorCommand.FlipStem, K("L"));
         Bind(KeyScope.Speedy, EditorCommand.AutoStem, K("L", ctrl: true));
+        Bind(KeyScope.Speedy, EditorCommand.BreakBeam, K("OemQuestion"), K("Divide"));
+        Bind(KeyScope.Speedy, EditorCommand.GraceNote, K("OemSemicolon"));
+        Bind(KeyScope.Speedy, EditorCommand.HideEntry, K("O"));
 
         foreach (var (note, add, letter) in new[]
                  {
@@ -525,8 +528,9 @@ public static class CommandRunner
         EditorCommand.CueNotes => editor.ToggleCue(),
         EditorCommand.TimeAbbreviation => editor.ToggleTimeAbbreviation(),
         EditorCommand.BarlineFermata => editor.ToggleBarlineFermata(),
-        EditorCommand.BreakBeam or EditorCommand.GraceNote or EditorCommand.HideEntry =>
-            EditResult.Refused($"'{KeyMap.Info(command).Name}'은(는) 아직 지원하지 않습니다."),
+        EditorCommand.BreakBeam => editor.BreakBeam(),
+        EditorCommand.GraceNote => editor.MakeGrace(),
+        EditorCommand.HideEntry => editor.ToggleHidden(),
         _ => null,
     };
 

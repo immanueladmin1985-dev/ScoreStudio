@@ -9,7 +9,7 @@ namespace ScoreStudio.Models;
 public sealed class ScoreProject
 {
     /// <summary>The project file schema version this build reads and writes.</summary>
-    public const int CurrentSchemaVersion = 28;
+    public const int CurrentSchemaVersion = 29;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Title { get; set; } = "새 악보";
@@ -872,6 +872,12 @@ public sealed class ScoreEvent
 
     /// <summary>Drawn at cue size though it is played (MusicXML &lt;type size="cue"&gt;).</summary>
     public bool CueSize { get; set; }
+
+    /// <summary>
+    /// Not shown (MusicXML print-object="no"; Finale's hidden notes and the rests that fill a layer): it keeps its time
+    /// and is played, but is not drawn (docs/MARK_TOOLS.md).
+    /// </summary>
+    public bool Hidden { get; set; }
 }
 
 /// <summary>One figured-bass group: figures stacked from the top, at a time in the measure.</summary>

@@ -949,6 +949,7 @@ public static partial class MusicXmlExporter
         private XElement Note(MeasureContext context, ScoreEvent e, bool isChordMember, bool isMeasureRest)
         {
             var note = new XElement("note");
+            if (e.Hidden) note.Add(new XAttribute("print-object", "no"));
             if (e.Cue) note.Add(new XElement("cue"));
             if (isChordMember) note.Add(new XElement("chord"));
 

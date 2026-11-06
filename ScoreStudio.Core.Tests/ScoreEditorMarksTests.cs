@@ -250,4 +250,68 @@ public sealed class ScoreEditorMarksTests
         editor.Undo();
         Assert.False(Measure(editor, 0).BarlineFermata);
     }
+
+    /// <summary>Eight eighths C D E F G A B C in one measure, beamed by beat.</summary>
+    private static ScoreEditor Eighths()
+    {
+        var editor = new ScoreEditor(ScoreProject.CreateNew());
+        editor.SetInputValue(ScoreStudio.Layout.NoteType.Eighth, 0);
+        foreach (var letter in "CDEFGABC") Assert.True(editor.EnterNote(letter).Done);
+        editor.ClearSelection();
+        return editor;
+    }
+
+    [Fact]
+    public void HiddenNotes_AreToggled_KeepTheirTime_AndAreNotDrawn()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 1));
+        Assert.True(editor.ToggleHidden().Done);
+        Assert.True(Measure(editor, 0).Events[1].Hidden);
+        var heads = ScoreStudio.Layout.ScoreLayoutEngine.Layout(editor.Project).Pages[0].Items.OfType<ScoreStudio.Layout.GlyphItem>()
+            .Count(g => g.Glyph == ScoreStudio.Layout.Smufl.NoteheadBlack);
+        Assert.Equal(7, heads); // eight quarters, one hidden
+        Assert.True(editor.ToggleHidden().Done);
+        Assert.False(Measure(editor, 0).Events[1].Hidden);
+    }
+
+    [Fact]
+    public void GraceNote_TakesTheNoteBeforeTheNextOne_AndLeavesARest()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 3)); // F, before the G of the next measure
+        Assert.True(editor.MakeGrace().Done);
+
+        var rest = Measure(editor, 0).Events.Single(e => e.PositionNumerator == 3);
+        Assert.Equal(("Rest", 1), (rest.Kind, rest.DurationNumerator));
+        var grace = Assert.Single(Measure(editor, 1).Events[0].GraceNotes);
+        Assert.Equal((77, "eighth", true), (grace.MidiPitch, grace.Type, grace.Slash)); // F5, entered after C5 D5 E5
+
+        editor.Undo();
+        Assert.Equal("Note", Measure(editor, 0).Events.Single(e => e.PositionNumerator == 3).Kind);
+        Assert.Empty(Measure(editor, 1).Events[0].GraceNotes);
+
+        editor.Select(At(1, 3)); // the last note has nothing after it
+        Assert.False(editor.MakeGrace().Done);
+    }
+
+    [Fact]
+    public void BreakBeam_SplitsABeamBeforeTheNote_AndJoinsItBackToTheNoteBefore()
+    {
+        var editor = Eighths();
+        string Beams() => string.Join(" ", Measure(editor, 0).Events.Select(e => e.Beams.Count == 0 ? "-" : e.Beams[0].ToString()[0].ToString()));
+        Assert.Equal("B E B E B E B E", Beams());
+
+        editor.Select(At(0, 0) with { Position = R(1, 2) }); // the D, second of the first pair
+        Assert.True(editor.BreakBeam().Done);
+        Assert.Equal("- - B E B E B E", Beams());
+        Assert.True(editor.BreakBeam().Done);
+        Assert.Equal("B E B E B E B E", Beams());
+
+        editor.Select(At(0, 1)); // the E: join it to the D before
+        Assert.True(editor.BreakBeam().Done);
+        Assert.Equal("B C C E B E B E", Beams());
+        editor.Undo();
+        Assert.Equal("B E B E B E B E", Beams());
+    }
 }

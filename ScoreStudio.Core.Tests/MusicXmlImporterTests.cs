@@ -401,6 +401,20 @@ public sealed class MusicXmlImporterTests : IDisposable
     }
 
     [Fact]
+    public void HiddenNotesAndRests_AreKept_AndWrittenBackHidden()
+    {
+        // Finale fills a second layer with rests it does not print.
+        var xml = OneMeasure("", """<note print-object="no"><rest/><duration>2</duration><voice>2</voice><type>half</type></note><backup><duration>2</duration></backup>""");
+        var result = MusicXmlImporter.ImportXml(xml, "숨김");
+        Assert.Empty(result.Warnings);
+        Assert.Equal(new[] { false, true }, result.Project.Parts[0].Measures[0].Events.OrderBy(e => e.Voice).Select(e => e.Hidden)); // voice 2 is the hidden rest
+
+        var written = ScoreStudio.Export.MusicXmlExporter.ToXml(result.Project);
+        Assert.Contains("print-object=\"no\"", written);
+        Assert.Equal(new[] { false, true }, MusicXmlImporter.ImportXml(written, "다시").Project.Parts[0].Measures[0].Events.OrderBy(e => e.Voice).Select(e => e.Hidden));
+    }
+
+    [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
         var result = MusicXmlImporter.ImportFile(Sample("simple-melody.musicxml"));

@@ -55,11 +55,13 @@
                 <MenuItem Header="다음 음과 붙임줄" Tag="TieToNext" Click="Command_Click"/>
                 <MenuItem Header="기둥 방향 뒤집기" Tag="FlipStem" Click="Command_Click"/>
                 <MenuItem Header="기둥 방향 자동" Tag="AutoStem" Click="Command_Click"/>
+                <MenuItem Header="앞 음표와의 빔 끊기·잇기" Tag="BreakBeam" Click="Command_Click"/>
+                <MenuItem Header="다음 음표의 꾸밈음으로 바꾸기" Tag="GraceNote" Click="Command_Click"/>
+                <MenuItem Header="음표·쉼표 숨기기·보이기" Tag="HideEntry" Click="Command_Click"/>
                 <MenuItem Header="큐 음표로 바꾸기·되돌리기" Tag="CueNotes" Click="Command_Click"/>
                 <Separator/>
                 <MenuItem Header="4/4를 C, 2/2를 ¢로 쓰기·되돌리기" Tag="TimeAbbreviation" Click="Command_Click"/>
                 <MenuItem Header="마디 끝 마디선의 페르마타" Tag="BarlineFermata" Click="Command_Click"/>
-                <MenuItem Header="빔 다시 묶기" IsEnabled="False" ToolTipService.ShowOnDisabled="True" ToolTip="아직 지원하지 않습니다."/>
             </MenuItem>
             <MenuItem Header="보기(_V)">
                 <MenuItem Header="확대" InputGestureText="Ctrl+=" Click="ZoomIn_Click"/>

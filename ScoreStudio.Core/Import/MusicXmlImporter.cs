@@ -1018,6 +1018,7 @@ public static class MusicXmlImporter
             if (!isChord) (_chordStaff, _chordVoice) = (item.Staff, item.Voice);
             if (!isChord && _pendingGraces.Remove((item.Staff, item.Voice), out var graces)) item.GraceNotes = graces;
             item.Cue = note.Element("cue") is not null;
+            item.Hidden = (string?)note.Attribute("print-object") == "no";
             item.CueSize = !item.Cue && (string?)note.Element("type")?.Attribute("size") == "cue";
             if (note.Element("rest") is not null)
             {

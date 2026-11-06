@@ -92,6 +92,9 @@ internal sealed class PreparedChord
     /// <summary>Drawn at cue size (docs/FINALE_MARKS_3.md).</summary>
     public bool Cue { get; set; }
 
+    /// <summary>Not drawn, though it keeps its place (every note of the chord is hidden; docs/MARK_TOOLS.md).</summary>
+    public bool Hidden { get; set; }
+
     /// <summary>
     /// Shift to the right of the onset, in staff spaces: one of two voices moves aside when their notes would touch (a
     /// second, or a unison that cannot share a notehead).
@@ -264,6 +267,7 @@ internal static class NotePreparation
         public int? AccidentalMark { get; init; }
         public bool BuzzRoll { get; init; }
         public bool Cue { get; init; }
+        public bool Hidden { get; init; }
         public required IReadOnlyList<BeamType> Beams { get; set; }
 
         /// <summary>The source's stem direction for the chord, if it gives one.</summary>
@@ -314,7 +318,7 @@ internal static class NotePreparation
                     {
                         PartIndex = partIndex, Staff = staff, Voice = first.Voice, Start = Start(first), Value = value,
                         Duration = isMeasureRest ? Rational.Max(duration, nominal) : duration,
-                        IsRest = true, IsMeasureRest = isMeasureRest, VoiceRole = role, OctaveShift = first.OctaveShift, Cue = first.Cue || first.CueSize,
+                        IsRest = true, IsMeasureRest = isMeasureRest, VoiceRole = role, OctaveShift = first.OctaveShift, Cue = first.Cue || first.CueSize, Hidden = first.Hidden,
                         Articulations = first.Articulations.Distinct().OrderBy(a => a).ToList(),
                         Graces = restGraces, GraceRoomBefore = GraceRoom(restGraces, after: false), LeftExtent = GraceRoom(restGraces, after: false),
                         RightExtent = (isMeasureRest ? 0 : Smufl.RestWidth(value.Type) + DotsWidth(value)) + GraceRoom(restGraces, after: true),
@@ -371,7 +375,7 @@ internal static class NotePreparation
                     LetRing = chordEvents.Any(e => e.LetRing),
                     Fingerings = fingerings, FingeringAbove = chordEvents.Select(e => e.FingeringAbove).FirstOrDefault(f => f is not null),
                     AccidentalMark = chordEvents.Select(e => e.AccidentalMark).FirstOrDefault(a => a is not null), BuzzRoll = chordEvents.Any(e => e.BuzzRoll),
-                    Cue = chordEvents.Any(e => e.Cue || e.CueSize),
+                    Cue = chordEvents.Any(e => e.Cue || e.CueSize), Hidden = chordEvents.All(e => e.Hidden),
                     Arpeggio = chordEvents.Select(e => e.Arpeggio).FirstOrDefault(a => a != ArpeggioKind.None), Tremolo = chordEvents.Max(e => e.Tremolo), TremoloToNext = tremoloToNext,
                 });
             }
@@ -384,8 +388,8 @@ internal static class NotePreparation
                 built[chord] = BuildChord(partIndex, staff, chord.First.Voice, Start(chord.First), Duration(chord.First), chord.Value, stemUp, chord.Role,
                     chord.Notes, chord.First.OctaveShift, chord.Beams, chord.Lyrics, chord.ExtendEnds, chord.Articulations, chord.Graces, chord.Arpeggio);
                 (built[chord].LetRing, built[chord].Tremolo, built[chord].TremoloToNext) = (chord.LetRing, chord.Tremolo, chord.TremoloToNext);
-                (built[chord].Fingerings, built[chord].FingeringAbove, built[chord].AccidentalMark, built[chord].BuzzRoll, built[chord].Cue) =
-                    (chord.Fingerings, chord.FingeringAbove, chord.AccidentalMark, chord.BuzzRoll, chord.Cue);
+                (built[chord].Fingerings, built[chord].FingeringAbove, built[chord].AccidentalMark, built[chord].BuzzRoll, built[chord].Cue, built[chord].Hidden) =
+                    (chord.Fingerings, chord.FingeringAbove, chord.AccidentalMark, chord.BuzzRoll, chord.Cue, chord.Hidden);
                 // Room after the chord for a breath mark or caesura, and for a doit or falloff.
                 if (chord.Articulations.Any(a => a is Articulation.BreathMark or Articulation.Caesura or Articulation.Doit or Articulation.Falloff))
                     built[chord].RightExtent += 1.8;
