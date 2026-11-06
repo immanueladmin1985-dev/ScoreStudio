@@ -503,8 +503,10 @@ public sealed class MarksLayoutTests
     [Fact]
     public void GlissandoText_RunsAlongTheLine_AboveIt()
     {
-        var project = Score(1, Note("C5", 72, 0, 2), Note("G5", 79, 2, 2));
-        project.Parts[0].Measures[0].Glissandos.Add(new ScoreGlissando { PositionNumerator = 0, EndPositionNumerator = 2, Text = "gliss." });
+        // From a whole note to the next measure's, so the line is long enough for its text.
+        var project = Score(2, Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[1].Events.Add(Note("G5", 79, 0, 4));
+        project.Parts[0].Measures[0].Glissandos.Add(new ScoreGlissando { PositionNumerator = 0, EndMeasureOffset = 1, EndPositionNumerator = 0, Text = "gliss." });
         var (page, _) = Layout(project);
 
         var line = Assert.Single(page.Items.OfType<LineItem>(), l => l.X1 != l.X2 && l.Y1 != l.Y2);
