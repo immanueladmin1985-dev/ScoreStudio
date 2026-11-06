@@ -1182,6 +1182,9 @@ public partial class MainWindow : Window
         {
             ClefType.Treble => "높은음",
             ClefType.Treble8vb => "높은음 8vb",
+            ClefType.Treble8va => "높은음 8va",
+            ClefType.Bass8vb => "낮은음 8vb",
+            ClefType.Bass8va => "낮은음 8va",
             ClefType.Bass => "낮은음",
             ClefType.Alto => "알토",
             ClefType.Tenor => "테너",

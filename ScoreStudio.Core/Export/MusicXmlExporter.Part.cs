@@ -634,6 +634,9 @@ public static partial class MusicXmlExporter
                 ClefType.Alto => ("C", 3, 0),
                 ClefType.Tenor => ("C", 4, 0),
                 ClefType.Treble8vb => ("G", 2, -1),
+                ClefType.Treble8va => ("G", 2, 1),
+                ClefType.Bass8vb => ("F", 4, -1),
+                ClefType.Bass8va => ("F", 4, 1),
                 _ => ("G", 2, 0),
             };
             var element = new XElement("clef");

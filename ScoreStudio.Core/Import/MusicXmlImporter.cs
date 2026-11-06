@@ -865,6 +865,9 @@ public static class MusicXmlImporter
             {
                 ("G", 2, 0) => ClefType.Treble,
                 ("G", 2, -1) => ClefType.Treble8vb,
+                ("G", 2, 1) => ClefType.Treble8va,
+                ("F", 4, -1) => ClefType.Bass8vb,
+                ("F", 4, 1) => ClefType.Bass8va,
                 ("F", 4, 0) => ClefType.Bass,
                 ("C", 3, 0) => ClefType.Alto,
                 ("C", 4, 0) => ClefType.Tenor,

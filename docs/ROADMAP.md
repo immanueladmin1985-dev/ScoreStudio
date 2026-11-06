@@ -144,7 +144,8 @@
    - [x] 큐 음표, 숫자 저음 (스키마 26, `docs/FINALE_MARKS_3.md` 2절)
    - [x] C·¢ 박자 기호, 3+2 박자표, 박자 없음, 다른 조표(이론상의 조표 포함), 곡 중간의 이조 변경 (스키마 27, `docs/FINALE_MARKS_3.md` 3절)
    - [x] 코드 다이어그램, 지시 기호(symbol) (스키마 28, `docs/FINALE_MARKS_3.md` 4절)
-   - [ ] 남은 경고 (`docs/FINALE_MARKS_3.md` 끝): 옥타브 음자리표 일부, 지시 기호(symbol), `.musx` 타악기 음표 위치·세뇨·코다
+   - [x] 옥타브 음자리표(높은음 8va, 낮은음 8vb·8va) (`docs/FINALE_MARKS_3.md` 5절)
+   - [ ] 남은 경고 (`docs/FINALE_MARKS_3.md` 끝): denigma 한계(타악기 위치, 반복 기호), 꾸밈음에 걸린 글리산도, 여러 박자를 이은 박자표 등, 지시 기호(symbol), `.musx` 타악기 음표 위치·세뇨·코다
 4. [ ] Finale식 조작 맞추기 (사용자가 써 본 결과 반영)
 
 ## Sprint 5 — 사보/출력

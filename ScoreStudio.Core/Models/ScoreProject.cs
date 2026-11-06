@@ -215,6 +215,15 @@ public enum ClefType
 
     /// <summary>Percussion clef: notes are placed as in the treble clef (docs/PERCUSSION.md).</summary>
     Percussion,
+
+    /// <summary>Treble clef sounding an octave higher (piccolo, glockenspiel).</summary>
+    Treble8va,
+
+    /// <summary>Bass clef sounding an octave lower (contrabass, contrabassoon).</summary>
+    Bass8vb,
+
+    /// <summary>Bass clef sounding an octave higher.</summary>
+    Bass8va,
 }
 
 /// <summary>How a time signature is shown. Stored in project files by name.</summary>

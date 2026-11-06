@@ -141,7 +141,10 @@ public static partial class Notation
     {
         ClefType.Treble or ClefType.Percussion => 4 * 7 + 2, // E4: percussion positions read as in the treble clef
         ClefType.Treble8vb => 3 * 7 + 2, // E3
+        ClefType.Treble8va => 5 * 7 + 2, // E5
         ClefType.Bass => 2 * 7 + 4,      // G2
+        ClefType.Bass8vb => 1 * 7 + 4,   // G1
+        ClefType.Bass8va => 3 * 7 + 4,   // G3
         ClefType.Alto => 3 * 7 + 3,      // F3
         ClefType.Tenor => 3 * 7 + 1,     // D3
         _ => throw new ArgumentOutOfRangeException(nameof(clef), clef, null),
@@ -188,7 +191,7 @@ public static partial class Notation
         var treble = keyFifths > 0 ? TrebleSharpPositions : TrebleFlatPositions;
         var shift = clef switch
         {
-            ClefType.Bass => -2,
+            ClefType.Bass or ClefType.Bass8vb or ClefType.Bass8va => -2,
             ClefType.Alto => -1,
             ClefType.Tenor => 1,
             _ => 0,

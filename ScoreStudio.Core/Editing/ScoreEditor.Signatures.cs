@@ -193,6 +193,9 @@ public sealed partial class ScoreEditor
         ClefType.Alto => "가온음자리표(알토)",
         ClefType.Tenor => "가온음자리표(테너)",
         ClefType.Treble8vb => "옥타브 아래 높은음자리표",
+        ClefType.Treble8va => "옥타브 위 높은음자리표",
+        ClefType.Bass8vb => "옥타브 아래 낮은음자리표",
+        ClefType.Bass8va => "옥타브 위 낮은음자리표",
         ClefType.Percussion => "타악기 음자리표",
         _ => clef.ToString(),
     };

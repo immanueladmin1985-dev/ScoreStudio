@@ -96,7 +96,10 @@ public static class Smufl
     {
         ClefType.Treble => GClef,
         ClefType.Treble8vb => GClef8vb,
+        ClefType.Treble8va => '\uE053',
         ClefType.Bass => FClef,
+        ClefType.Bass8vb => '\uE064',
+        ClefType.Bass8va => '\uE065',
         ClefType.Alto or ClefType.Tenor => CClef,
         ClefType.Percussion => PercussionClef,
         _ => throw new ArgumentOutOfRangeException(nameof(clef), clef, null),
@@ -106,7 +109,8 @@ public static class Smufl
     {
         ClefType.Treble => 2.684,
         ClefType.Treble8vb => 2.656,
-        ClefType.Bass => 2.736,
+        ClefType.Treble8va => 2.684,
+        ClefType.Bass or ClefType.Bass8vb or ClefType.Bass8va => 2.736,
         ClefType.Alto or ClefType.Tenor => 2.796,
         ClefType.Percussion => 1.528,
         _ => throw new ArgumentOutOfRangeException(nameof(clef), clef, null),
@@ -115,8 +119,8 @@ public static class Smufl
     /// <summary>Staff line the clef sits on, counted in staff spaces down from the top line.</summary>
     public static double ClefLine(ClefType clef) => clef switch
     {
-        ClefType.Treble or ClefType.Treble8vb => 3, // G line: second from the bottom
-        ClefType.Bass => 1,                         // F line: second from the top
+        ClefType.Treble or ClefType.Treble8vb or ClefType.Treble8va => 3, // G line: second from the bottom
+        ClefType.Bass or ClefType.Bass8vb or ClefType.Bass8va => 1,        // F line: second from the top
         ClefType.Alto => 2,                         // middle line
         ClefType.Tenor => 1,                        // fourth line from the bottom
         ClefType.Percussion => 2,                   // centred on the middle line

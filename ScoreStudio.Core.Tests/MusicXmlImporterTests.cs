@@ -382,6 +382,24 @@ public sealed class MusicXmlImporterTests : IDisposable
         Assert.Equal("지시 기호 <handbellsMalletBellOnTable>은(는) 저장만 하고 그리지 않음", Assert.Single(result.Warnings).Message);
     }
 
+    [Theory]
+    [InlineData("G", 1, ClefType.Treble8va, '\uE053', 37)]
+    [InlineData("F", -1, ClefType.Bass8vb, '\uE064', 11)]
+    [InlineData("F", 1, ClefType.Bass8va, '\uE065', 25)]
+    public void OctaveClefs_AreKept_WrittenBack_AndDrawn(string sign, int octave, ClefType expected, char glyph, int bottomLine)
+    {
+        var line = sign == "G" ? 2 : 4;
+        var xml = OneMeasure($"<clef><sign>{sign}</sign><line>{line}</line><clef-octave-change>{octave}</clef-octave-change></clef>", "");
+        var result = MusicXmlImporter.ImportXml(xml, "음자리표");
+        Assert.Empty(result.Warnings);
+        Assert.Equal(expected, result.Project.Parts[0].Staves[0].Clef);
+        Assert.Equal(bottomLine, ScoreStudio.Layout.Notation.BottomLineDiatonic(expected)); // E5, G1, G3 counted in steps from C0
+
+        var back = MusicXmlImporter.ImportXml(ScoreStudio.Export.MusicXmlExporter.ToXml(result.Project), "다시").Project;
+        Assert.Equal(expected, back.Parts[0].Staves[0].Clef);
+        Assert.Contains(ScoreStudio.Layout.ScoreLayoutEngine.Layout(result.Project).Pages[0].Items.OfType<ScoreStudio.Layout.GlyphItem>(), g => g.Glyph == glyph);
+    }
+
     [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
