@@ -761,22 +761,49 @@ public static partial class MusicXmlExporter
                 items.Add(new Item(line.Position, direction, UsesOffset: false));
             }
 
-            foreach (var figured in measure.FiguredBass.Where(f => f.Staff == staff))
+            // Figured bass goes just before the note it stands under (MusicXML has no offset for it). Groups that change
+            // during a note follow one another there, each lasting until the next; a gap before the first is held by
+            // a group of empty figures.
+            XElement Figured(ScoreFiguredBass? figured, Rational duration)
             {
                 var element = new XElement("figured-bass");
-                if (figured.Parentheses) element.Add(new XAttribute("parentheses", "yes"));
-                foreach (var figure in figured.Figures)
+                if (figured is null)
                 {
-                    var figureElement = new XElement("figure");
-                    if (figure.Prefix.Length > 0) figureElement.Add(new XElement("prefix", figure.Prefix));
-                    if (figure.Number.Length > 0) figureElement.Add(new XElement("figure-number", figure.Number));
-                    if (figure.Suffix.Length > 0) figureElement.Add(new XElement("suffix", figure.Suffix));
-                    if (figure.Extend) figureElement.Add(new XElement("extend"));
-                    element.Add(figureElement);
+                    element.Add(new XElement("figure"));
+                }
+                else
+                {
+                    if (figured.Parentheses) element.Add(new XAttribute("parentheses", "yes"));
+                    foreach (var figure in figured.Figures)
+                    {
+                        var figureElement = new XElement("figure");
+                        if (figure.Prefix.Length > 0) figureElement.Add(new XElement("prefix", figure.Prefix));
+                        if (figure.Number.Length > 0) figureElement.Add(new XElement("figure-number", figure.Number));
+                        if (figure.Suffix.Length > 0) figureElement.Add(new XElement("suffix", figure.Suffix));
+                        if (figure.Extend) figureElement.Add(new XElement("extend"));
+                        element.Add(figureElement);
+                    }
                 }
 
-                if (figured.DurationNumerator > 0) element.Add(new XElement("duration", Duration(new Rational(figured.DurationNumerator, figured.DurationDenominator))));
-                items.Add(new Item(new Rational(figured.PositionNumerator, figured.PositionDenominator), element, UsesOffset: false));
+                if (duration.Sign > 0) element.Add(new XElement("duration", Duration(duration)));
+                return element;
+            }
+
+            var notesOfStaff = measure.Events.Where(e => e.Staff == staff).OrderBy(Start).ToList();
+            foreach (var group in measure.FiguredBass.Where(f => f.Staff == staff)
+                         .GroupBy(f => notesOfStaff.LastOrDefault(e => Start(e) <= new Rational(f.PositionNumerator, f.PositionDenominator)) is { } under ? Start(under) : Rational.Zero))
+            {
+                var figures = group.OrderBy(f => new Rational(f.PositionNumerator, f.PositionDenominator)).ToList();
+                var at = group.Key;
+                var first = new Rational(figures[0].PositionNumerator, figures[0].PositionDenominator);
+                if (first > at) items.Add(new Item(at, Figured(null, first - at), UsesOffset: false));
+                for (var i = 0; i < figures.Count; i++)
+                {
+                    var duration = i + 1 < figures.Count
+                        ? new Rational(figures[i + 1].PositionNumerator, figures[i + 1].PositionDenominator) - new Rational(figures[i].PositionNumerator, figures[i].PositionDenominator)
+                        : new Rational(figures[i].DurationNumerator, figures[i].DurationDenominator);
+                    items.Add(new Item(at, Figured(figures[i], duration), UsesOffset: false));
+                }
             }
 
             foreach (var chord in measure.ChordSymbols.Where(c => c.Staff == staff))

@@ -470,6 +470,12 @@ public static class MusicXmlImporter
         /// <summary>The part's instruments, kept only for a drum set or unpitched sounds (docs/PERCUSSION.md).</summary>
         private readonly List<ScoreInstrument> _instruments;
 
+        /// <summary>Figured bass waiting for the note it stands under (which gives its staff).</summary>
+        private readonly List<ScoreFiguredBass> _pendingFigures = new();
+
+        /// <summary>How far into the next note the next figured-bass group starts (the durations of the groups before it).</summary>
+        private Rational _figureOffset = Rational.Zero;
+
         /// <summary>The measure read before the current one, or null in the first.</summary>
         private ScoreMeasure? _previousMeasure;
 
@@ -595,10 +601,20 @@ public static class MusicXmlImporter
                         ReadPrintLayout(child, measure);
                         break;
                     case "note":
+                        // Figured bass written before this note belongs under it, on its staff.
+                        if (child.Element("grace") is null && child.Element("chord") is null && _pendingFigures.Count > 0)
+                        {
+                            var staff = ReadStaff(child);
+                            foreach (var figured in _pendingFigures) figured.Staff = staff;
+                            _pendingFigures.Clear();
+                        }
+
+                        _figureOffset = Rational.Zero;
                         ReadNote(child, measure, ref cursor, ref lastStart);
                         if (cursor > end) end = cursor;
                         break;
                     case "backup":
+                        _figureOffset = Rational.Zero;
                         cursor -= Duration(child);
                         if (cursor.Sign < 0)
                         {
@@ -607,6 +623,7 @@ public static class MusicXmlImporter
                         }
                         break;
                     case "forward":
+                        _figureOffset = Rational.Zero;
                         cursor += Duration(child);
                         if (cursor > end) end = cursor;
                         break;
@@ -730,11 +747,12 @@ public static class MusicXmlImporter
                 return;
             }
 
-            if (_transpose is null)
+            // The first measure's interval is the part's; one that first appears (or changes) later holds from its measure on.
+            if (_measureIndex == 0 && _transpose is null)
             {
                 _transpose = _currentTranspose = read;
             }
-            else if ((_currentTranspose!.Diatonic, _currentTranspose.Chromatic, _currentTranspose.OctaveChange) != (read.Diatonic, read.Chromatic, read.OctaveChange))
+            else if ((_currentTranspose?.Diatonic ?? 0, _currentTranspose?.Chromatic ?? 0, _currentTranspose?.OctaveChange ?? 0) != (read.Diatonic, read.Chromatic, read.OctaveChange))
             {
                 // An instrument change (docs/FINALE_MARKS_3.md): the new interval holds from this measure on.
                 _currentTranspose = read;
@@ -743,7 +761,7 @@ public static class MusicXmlImporter
         }
 
         /// <summary>
-        /// A key of more than seven sharps or flats (fifths 9 is G♯ major): every step sharp (or flat), the first ones
+        /// A key of more than seven sharps or flats (fifths 8 is G♯ major): every step sharp (or flat), the first ones
         /// in the usual order doubled. Null when the key is not one of these.
         /// </summary>
         private static List<ScoreKeyAccidental>? TheoreticalKey(XElement key)
@@ -775,8 +793,7 @@ public static class MusicXmlImporter
                 return;
             }
 
-            _senzaMisura = measure.SenzaMisura = false;
-            _timeSymbol = measure.TimeSymbol = (string?)time.Attribute("symbol") switch
+            var symbol = (string?)time.Attribute("symbol") switch
             {
                 "common" => TimeSymbol.Common,
                 "cut" => TimeSymbol.Cut,
@@ -789,7 +806,7 @@ public static class MusicXmlImporter
                 return;
 
             // "3+2" over one beat type is kept as written; several signatures in one (3/4 + 2/8) become their sum.
-            _beatsText = measure.BeatsText = beats.Count == 1 && beats[0].Contains('+') && beats[0].All(c => char.IsDigit(c) || c == '+') && beats[0].Length <= 20 ? beats[0] : "";
+            var beatsText = beats.Count == 1 && beats[0].Contains('+') && beats[0].All(c => char.IsDigit(c) || c == '+') && beats[0].Length <= 20 ? beats[0] : "";
             if (beats.Count > 1)
                 Warn("여러 박자를 이은 박자표(3/4+2/8 등)는 합한 박자로 가져옴");
 
@@ -823,6 +840,8 @@ public static class MusicXmlImporter
 
             _numerator = measure.Numerator = numerator;
             _denominator = measure.Denominator = denominator;
+            // Only a time signature that could be read gives its look (C, ¢, "3+2") and ends a senza misura.
+            (_senzaMisura, _timeSymbol, _beatsText) = (measure.SenzaMisura, measure.TimeSymbol, measure.BeatsText) = (false, symbol, beatsText);
         }
 
         /// <summary>A staff's number of lines (docs/PERCUSSION.md): the first one given is kept for the whole piece.</summary>
@@ -1483,10 +1502,12 @@ public static class MusicXmlImporter
                 {
                     articulations.Add(mark);
                 }
-                else if (technical.Name == "fingering" && technical.Value.Trim() is { Length: > 0 and <= 10 } fingering)
+                else if (technical.Name == "fingering"
+                         && technical.Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } fingers && fingers.All(f => f.Length <= 10 && !f.Any(char.IsControl)))
                 {
-                    // A note's fingerings in order; Finale writes a substitution ("3-1") as two of them.
-                    item.Fingerings.Add(fingering);
+                    // A note's fingerings in order; Finale writes a substitution ("3-1") as two of them. Several fingers in
+                    // one element (separated by spaces or lines) are several fingerings.
+                    item.Fingerings.AddRange(fingers);
                     item.FingeringAbove ??= Placement(technical);
                 }
                 else
@@ -2031,6 +2052,13 @@ public static class MusicXmlImporter
                 Prefix = f.Element("prefix")?.Value.Trim() ?? "", Number = f.Element("figure-number")?.Value.Trim() ?? "",
                 Suffix = f.Element("suffix")?.Value.Trim() ?? "", Extend = f.Element("extend") is { } e && (string?)e.Attribute("type") is null or "start" or "continue",
             }).Where(f => f.Number.Length <= 4 && f.Prefix.Length <= 20 && f.Suffix.Length <= 20).Take(6).ToList();
+            var duration = element.Element("duration") is null ? Rational.Zero : Duration(element);
+
+            // Several groups before one note change during it: each starts where the one before ends (its duration). A
+            // group of empty figures only holds the place of the time before the next one.
+            var position = cursor + _figureOffset;
+            _figureOffset += duration;
+            if (figures.All(f => f.Number.Length == 0 && f.Prefix.Length == 0 && f.Suffix.Length == 0)) return;
             if (figures.Count == 0)
             {
                 Warn("읽을 수 없는 숫자 저음은 무시함");
@@ -2038,10 +2066,12 @@ public static class MusicXmlImporter
             }
 
             var figured = new ScoreFiguredBass { Staff = Math.Max(0, _staves - 1), Parentheses = (string?)element.Attribute("parentheses") == "yes", Figures = figures };
-            var duration = element.Element("duration") is null ? Rational.Zero : Duration(element);
-            if (TrySetFraction(cursor, (a, b) => (figured.PositionNumerator, figured.PositionDenominator) = (a, b))
+            if (TrySetFraction(position, (a, b) => (figured.PositionNumerator, figured.PositionDenominator) = (a, b))
                 && TrySetFraction(duration, (a, b) => (figured.DurationNumerator, figured.DurationDenominator) = (a, b)))
+            {
                 measure.FiguredBass.Add(figured);
+                _pendingFigures.Add(figured);
+            }
         }
 
         /// <summary>A guitar chord diagram (docs/FINALE_MARKS_3.md); null, with a warning, when it cannot be read.</summary>

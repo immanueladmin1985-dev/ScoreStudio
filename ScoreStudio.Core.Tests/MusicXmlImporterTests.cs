@@ -414,6 +414,79 @@ public sealed class MusicXmlImporterTests : IDisposable
         Assert.Equal(new[] { false, true }, MusicXmlImporter.ImportXml(written, "다시").Project.Parts[0].Measures[0].Events.OrderBy(e => e.Voice).Select(e => e.Hidden));
     }
 
+    /// <summary>Import, export and import again: the two projects must match (found in review).</summary>
+    private static (ScoreProject First, ScoreProject Again) RoundTrip(string xml)
+    {
+        var first = MusicXmlImporter.ImportXml(xml, "왕복").Project;
+        var again = MusicXmlImporter.ImportXml(ScoreStudio.Export.MusicXmlExporter.ToXml(first), "다시").Project;
+        return (first, again);
+    }
+
+    [Fact]
+    public void ATranspositionFirstGivenInALaterMeasure_HoldsFromThere()
+    {
+        var xml = OneMeasure("", "").Replace("</measure></part>", """
+            </measure><measure number="2"><attributes><transpose><diatonic>-1</diatonic><chromatic>-2</chromatic></transpose></attributes>
+            <note><rest/><duration>4</duration><voice>1</voice><type>whole</type></note></measure></part>
+            """);
+        var (first, again) = RoundTrip(xml);
+        foreach (var part in new[] { first.Parts[0], again.Parts[0] })
+        {
+            Assert.Null(part.Transpose);
+            Assert.Equal(-2, part.Measures[1].Transpose!.Chromatic);
+        }
+    }
+
+    [Fact]
+    public void FiguredBassChangingDuringANote_FollowsOn_OnTheNotesStaff_AndRoundTrips()
+    {
+        var xml = """
+            <score-partwise version="4.0"><part-list><score-part id="P1"><part-name>오르간</part-name></score-part></part-list>
+            <part id="P1"><measure number="1">
+              <attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves>
+                <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+              <note><pitch><step>C</step><octave>5</octave></pitch><duration>8</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+              <backup><duration>8</duration></backup>
+              <figured-bass><figure><figure-number>6</figure-number></figure><duration>2</duration></figured-bass>
+              <figured-bass><figure><figure-number>5</figure-number></figure><duration>2</duration></figured-bass>
+              <note><pitch><step>C</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>half</type><staff>2</staff></note>
+              <note><pitch><step>G</step><octave>2</octave></pitch><duration>4</duration><voice>5</voice><type>half</type><staff>2</staff></note>
+            </measure></part></score-partwise>
+            """;
+        var (first, again) = RoundTrip(xml);
+        foreach (var project in new[] { first, again })
+            Assert.Equal(new[] { "1:0/1 6", "1:1/1 5" },
+                project.Parts[0].Measures[0].FiguredBass.Select(f => $"{f.Staff}:{f.PositionNumerator}/{f.PositionDenominator} {f.Figures[0].Number}"));
+
+        // A group under the middle of a note is written before that note, after a placeholder for the gap.
+        first.Parts[0].Measures[0].FiguredBass.RemoveAt(0);
+        var written = ScoreStudio.Export.MusicXmlExporter.ToXml(first);
+        Assert.DoesNotContain("<forward>", written.Split("<figured-bass>")[1].Split("</figured-bass>")[0]);
+        var back = MusicXmlImporter.ImportXml(written, "다시").Project.Parts[0].Measures[0].FiguredBass.Single();
+        Assert.Equal((1, 1, "5"), (back.Staff, back.PositionNumerator, back.Figures[0].Number));
+    }
+
+    [Fact]
+    public void FingeringsWithLineBreaks_BecomeSeveralFingerings_AndTheProjectSaves()
+    {
+        var xml = OneMeasure("", "").Replace("<type>whole</type>", "<type>whole</type><notations><technical><fingering>3\n1</fingering></technical></notations>");
+        var project = MusicXmlImporter.ImportXml(xml, "운지").Project;
+        Assert.Equal(new[] { "3", "1" }, project.Parts[0].Measures[0].Events[0].Fingerings);
+        ProjectFileService.Parse(ProjectFileService.ToJson(project));
+    }
+
+    [Fact]
+    public void AnUnreadableTimeSignature_KeepsTheOldLookAsWellAsTheOldTime()
+    {
+        var xml = OneMeasure("", "").Replace("</measure></part>", """
+            </measure><measure number="2"><attributes><time><beats>3+2</beats><beat-type>x</beat-type></time></attributes>
+            <note><rest/><duration>4</duration><voice>1</voice><type>whole</type></note></measure></part>
+            """);
+        var (first, again) = RoundTrip(xml);
+        Assert.Equal((4, ""), (first.Parts[0].Measures[1].Numerator, first.Parts[0].Measures[1].BeatsText));
+        Assert.Equal(4, again.Parts[0].Measures[1].Numerator);
+    }
+
     [Fact]
     public void SimpleMelody_TitlesKeyTimePitchesRhythmAndLyricsMatchTheSource()
     {
