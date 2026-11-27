@@ -654,9 +654,25 @@ public static partial class ScoreLayoutEngine
                     var end = figured.DurationNumerator > 0
                         ? XAtTime(position + new Rational(figured.DurationNumerator, figured.DurationDenominator), measureAnchors)
                         : (double?)null;
-                    if (end is not null && position + new Rational(figured.DurationNumerator, figured.DurationDenominator) >= measureAnchors[^1].Time
-                        && measureLayouts.FirstOrDefault(m => m.MeasureIndex == planned.Index) is { } layout)
-                        end = layout.Right - 0.5 * sp;
+                    if (end is not null && position + new Rational(figured.DurationNumerator, figured.DurationDenominator) >= measureAnchors[^1].Time)
+                    {
+                        // Past the barline the line goes on through the following measures of the system, to where the figures end.
+                        var remaining = position + new Rational(figured.DurationNumerator, figured.DurationDenominator) - measureAnchors[^1].Time;
+                        var measure = planned.Index;
+                        end = measureLayouts.FirstOrDefault(m => m.MeasureIndex == measure)?.Right - 0.5 * sp ?? end;
+                        while (remaining.Sign > 0 && anchors.TryGetValue(measure + 1, out var next))
+                        {
+                            measure++;
+                            if (remaining < next[^1].Time)
+                            {
+                                end = XAtTime(remaining, next);
+                                break;
+                            }
+
+                            remaining -= next[^1].Time;
+                            end = measureLayouts.FirstOrDefault(m => m.MeasureIndex == measure)?.Right - 0.5 * sp ?? end;
+                        }
+                    }
 
                     foreach (var figure in figured.Figures)
                     {

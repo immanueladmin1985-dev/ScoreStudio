@@ -532,4 +532,22 @@ public sealed class MarksLayoutTests
         Assert.Contains(lines, l => l.Y1 < systems[1].Top);                     // to the end of the first system
         Assert.Contains(lines, l => l.Y1 > systems[1].Top && l.Y2 < l.Y1);       // rising to the G5 in the second
     }
+
+    [Fact]
+    public void FiguredBassExtension_RunsOnIntoTheNextMeasure()
+    {
+        var project = Score(2, Note("C4", 60, 0, 2), Note("G4", 67, 2, 2));
+        project.Parts[0].Measures[1].Events.Add(Note("C4", 60, 0, 2));
+        project.Parts[0].Measures[1].Events.Add(Note("G4", 67, 2, 2));
+        project.Parts[0].Measures[0].FiguredBass.Add(new ScoreFiguredBass
+        {
+            PositionNumerator = 2, DurationNumerator = 4, Figures = { new ScoreFigure { Number = "6", Extend = true } },
+        });
+        var (page, _) = Layout(project);
+
+        var six = Assert.Single(page.Items.OfType<TextItem>(), t => t.Text == "6");
+        var line = Assert.Single(page.Items.OfType<LineItem>(), l => l.Y1 == l.Y2 && l.X1 > six.X && Math.Abs(l.Y1 - six.Y) < 2 * Sp);
+        var heads = page.Items.OfType<GlyphItem>().Where(g => g.Glyph == Smufl.NoteheadHalf).OrderBy(g => g.X).ToList();
+        Assert.InRange(line.X2, heads[2].X, heads[3].X); // two quarters into the second measure, between its two halves
+    }
 }
