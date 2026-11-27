@@ -20,10 +20,13 @@ public sealed partial class ScoreEditor
 
         var first = Cursor.Measure;
         var measures = Project.Parts[Cursor.Part].Measures;
+        // Another key (F sharp with B flat) has fifths 0 too: the key is the fifths and the accidentals together.
+        static string Key(ScoreMeasure m) => m.KeyFifths + ":" + string.Join(",", m.KeyAccidentals.Select(k => k.Step + k.Alter));
         var old = measures[first].KeyFifths;
-        if (old == fifths) return EditResult.Refused($"이미 {KeyName(fifths)}입니다.");
+        var oldKey = Key(measures[first]);
+        if (oldKey == $"{fifths}:") return EditResult.Refused($"이미 {KeyName(fifths)}입니다.");
         var last = first;
-        while (last + 1 < measures.Count && measures[last + 1].KeyFifths == old) last++;
+        while (last + 1 < measures.Count && Key(measures[last + 1]) == oldKey) last++;
 
         return Change(() =>
         {
@@ -55,9 +58,11 @@ public sealed partial class ScoreEditor
     public EditResult SetTime(string beatsText, int denominator)
     {
         var parts = beatsText.Replace(" ", "").Split('+');
-        if (parts.Length < 2 || parts.Any(p => !int.TryParse(p, out var n) || n < 1))
-            return EditResult.Refused("3+2처럼 숫자를 +로 이어 쓰세요.");
-        return SetTime(parts.Sum(int.Parse), denominator, string.Join("+", parts));
+        if (parts.Length < 2 || parts.Any(p => !int.TryParse(p, out var n) || n is < 1 or > 32))
+            return EditResult.Refused("3+2처럼 32 이하의 숫자를 +로 이어 쓰세요.");
+        var text = string.Join("+", parts.Select(int.Parse));
+        if (text.Length > 20) return EditResult.Refused("박자표의 위 숫자는 20자까지 쓸 수 있습니다.");
+        return SetTime(parts.Sum(int.Parse), denominator, text);
     }
 
     private EditResult SetTime(int numerator, int denominator, string beatsText)
@@ -67,11 +72,11 @@ public sealed partial class ScoreEditor
 
         var first = Cursor.Measure;
         var measures = Project.Parts[Cursor.Part].Measures;
-        var old = (measures[first].Numerator, measures[first].Denominator);
-        if (old == (numerator, denominator) && measures[first].BeatsText == beatsText && !measures[first].SenzaMisura)
+        var old = (measures[first].Numerator, measures[first].Denominator, measures[first].BeatsText);
+        if (old == (numerator, denominator, beatsText) && !measures[first].SenzaMisura)
             return EditResult.Refused($"이미 {(beatsText.Length > 0 ? beatsText : numerator.ToString())}/{denominator}박자입니다.");
         var last = first;
-        while (last + 1 < measures.Count && (measures[last + 1].Numerator, measures[last + 1].Denominator) == old) last++;
+        while (last + 1 < measures.Count && (measures[last + 1].Numerator, measures[last + 1].Denominator, measures[last + 1].BeatsText) == old) last++;
 
         return Change(() =>
         {

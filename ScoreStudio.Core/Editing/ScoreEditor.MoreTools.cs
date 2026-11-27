@@ -140,6 +140,13 @@ public sealed partial class ScoreEditor
 
         var fretted = frame.Notes.Where(n => n.Fret > 0).Select(n => n.Fret).ToList();
         var (low, high) = fretted.Count == 0 ? (1, 1) : (fretted.Min(), fretted.Max());
+        // The diagram shows frets from the lowest one used (or the nut), and holds at most 12 of them.
+        if (high > 4 && high - low + 1 > 12)
+        {
+            error = "한 다이어그램은 12프렛 안에 들어가야 합니다.";
+            return null;
+        }
+
         frame.FirstFret = high > 4 ? low : null;
         frame.Frets = Math.Max(4, high - (frame.FirstFret ?? 1) + 1);
         return frame;

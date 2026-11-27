@@ -1,6 +1,7 @@
 using ScoreStudio.Editing;
 using ScoreStudio.Import;
 using ScoreStudio.Models;
+using ScoreStudio.Services;
 
 namespace ScoreStudio.Core.Tests;
 
@@ -383,5 +384,70 @@ public sealed class ScoreEditorMarksTests
         Assert.True(editor.ToggleSymbol("repeat1Bar").Done);
         Assert.DoesNotContain(Measure(editor, 0).Directions, d => d.Kind == DirectionKind.Symbol);
         Assert.False(editor.ToggleSymbol("noSuchGlyph").Done);
+    }
+
+    /// <summary>What an edit leaves must load again (the review found edits whose files failed to reopen).</summary>
+    private static void AssertReloads(ScoreEditor editor) =>
+        ProjectFileService.Parse(ProjectFileService.ToJson(editor.Project));
+
+    [Fact]
+    public void PlusTimeSignatures_AndChordDiagrams_StayWithinWhatAFileCanHold()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 0));
+        Assert.False(editor.SetTime("1+1+1+1+1+1+1+1+1+1+1", 4).Done); // longer than 20 characters
+        Assert.False(editor.SetTime("2147483647+1", 4).Done);           // no overflow
+        Assert.Null(ScoreEditor.ParseFrame("0 1 14 0 0 0", out _));      // 14 frets in one diagram
+        Assert.NotNull(ScoreEditor.ParseFrame("12 14 14 13 12 12", out _));
+        Assert.True(editor.SetTime("2+2", 4).Done); // the same length as the four quarters already there
+        AssertReloads(editor);
+    }
+
+    [Fact]
+    public void GraceNote_TakesTheTieIntoItAway_AndIsRefusedBeforeARest()
+    {
+        var editor = Editor();
+        Measure(editor, 0).Events[0].MidiPitch = Measure(editor, 0).Events[1].MidiPitch;
+        Measure(editor, 0).Events[0].NotationSpelling = Measure(editor, 0).Events[1].NotationSpelling;
+        Measure(editor, 0).Events[0].TieToNext = true;
+        editor.Select(At(0, 1));
+        Assert.True(editor.MakeGrace().Done);
+        Assert.False(Measure(editor, 0).Events[0].TieToNext);
+        AssertReloads(editor);
+
+        editor.Select(At(0, 0)); // the next chord is now the rest left behind
+        Assert.False(editor.MakeGrace().Done);
+    }
+
+    [Fact]
+    public void AnOtherKey_CanBeTurnedBackIntoCMajor_WithoutTouchingALaterOtherKey()
+    {
+        var editor = Editor();
+        editor.Select(At(0, 0));
+        Assert.True(editor.SetOtherKey("F# Bb").Done);
+        Assert.True(editor.SetKey(0).Done);
+        Assert.All(editor.Project.Parts[0].Measures, m => Assert.Empty(m.KeyAccidentals));
+
+        editor.PlaceCursor(0, 0, 1, R(0));
+        Assert.True(editor.SetOtherKey("C#").Done);
+        editor.PlaceCursor(0, 0, 0, R(0));
+        Assert.True(editor.SetKey(2).Done);
+        Assert.Equal((2, ""), (Measure(editor, 0).KeyFifths, string.Join(",", Measure(editor, 0).KeyAccidentals.Select(k => k.Step))));
+        Assert.Equal((0, "C"), (Measure(editor, 1).KeyFifths, string.Join(",", Measure(editor, 1).KeyAccidentals.Select(k => k.Step))));
+    }
+
+    [Theory]
+    [InlineData("Z", "AA")]
+    [InlineData("AZ", "BA")]
+    [InlineData("12", "13")]
+    [InlineData("Intro", "A")]
+    public void RehearsalMarks_CountOnPastZ_AndNumbers(string before, string expected)
+    {
+        var editor = Editor();
+        editor.Select(At(0, 0));
+        Assert.True(editor.SetRehearsal(before).Done);
+        editor.Select(At(1, 0));
+        Assert.True(editor.SetRehearsal("").Done);
+        Assert.Equal(expected, Measure(editor, 1).Directions.Single(d => d.Kind == DirectionKind.Rehearsal).Text);
     }
 }

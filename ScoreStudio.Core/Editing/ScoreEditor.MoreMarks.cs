@@ -76,15 +76,37 @@ public sealed partial class ScoreEditor
         var trimmed = text.Trim();
         if (trimmed.Length == 0)
         {
-            var before = Project.Parts[at.Part].Measures.Take(at.Measure + 1)
-                .SelectMany((m, i) => m.Directions.Where(d => d.Kind == DirectionKind.Rehearsal
-                    && (i < at.Measure || new Rational(d.PositionNumerator, d.PositionDenominator) < at.Position)))
-                .Select(d => d.Text).LastOrDefault();
-            trimmed = before is { Length: 1 } letter && letter[0] is >= 'A' and < 'Z' ? ((char)(letter[0] + 1)).ToString() : "A";
+            // The latest mark before this place in any part (marks are usually on the top staff only).
+            var before = Project.Parts.SelectMany(part => part.Measures.Take(at.Measure + 1).SelectMany((m, i) => m.Directions
+                    .Where(d => d.Kind == DirectionKind.Rehearsal && (i < at.Measure || new Rational(d.PositionNumerator, d.PositionDenominator) < at.Position))
+                    .Select(d => (Measure: i, Position: new Rational(d.PositionNumerator, d.PositionDenominator), d.Text))))
+                .OrderBy(d => d.Measure).ThenBy(d => d.Position).Select(d => d.Text).LastOrDefault();
+            trimmed = NextRehearsalText(before);
         }
 
         return SetDirection(DirectionKind.Rehearsal, trimmed, d => (d.Text, d.Boxed, d.Bold) = (trimmed, true, true),
             $"리허설 마크 '{trimmed}'을(를) 넣었습니다.", "리허설 마크를 지웠습니다.");
+    }
+
+    /// <summary>The mark after another: A → B, Z → AA, AZ → BA; a number counts on (12 → 13); anything else starts at A.</summary>
+    private static string NextRehearsalText(string? before)
+    {
+        if (before is null) return "A";
+        if (int.TryParse(before, out var number)) return (number + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (before.Length == 0 || before.Any(c => c is < 'A' or > 'Z')) return "A";
+        var letters = before.ToCharArray();
+        for (var i = letters.Length - 1; i >= 0; i--)
+        {
+            if (letters[i] < 'Z')
+            {
+                letters[i]++;
+                return new string(letters);
+            }
+
+            letters[i] = 'A';
+        }
+
+        return "A" + new string(letters);
     }
 
     /// <summary>Puts a segno or coda sign at the selected chord or the cursor, or takes the one there away.</summary>
@@ -142,7 +164,7 @@ public sealed partial class ScoreEditor
     /// <summary>Strokes through the selected chord's stem (a single-note tremolo), 0 to take them off.</summary>
     public EditResult SetTremolo(int strokes)
     {
-        if (strokes is < 0 or > 4) return EditResult.Refused("트레몰로 빗금은 1~4개입니다.");
+        if (strokes is < 0 or > 4) return EditResult.Refused("트레몰로 빗금은 1~4개입니다(0은 빼기).");
         return ChangeChord("트레몰로", notes =>
         {
             foreach (var e in notes) (e.Tremolo, e.BuzzRoll) = (0, false);
@@ -235,7 +257,8 @@ public sealed partial class ScoreEditor
         if (symbol is null) return EditResult.Refused("C는 4/4, ¢는 2/2 박자에만 쓸 수 있습니다.");
         var abbreviated = measures[first].TimeSymbol == symbol;
         var last = first;
-        while (last + 1 < measures.Count && (measures[last + 1].Numerator, measures[last + 1].Denominator) == time) last++;
+        while (last + 1 < measures.Count && (measures[last + 1].Numerator, measures[last + 1].Denominator) == time
+               && measures[last + 1].BeatsText == measures[first].BeatsText) last++;
         return Change(() =>
         {
             foreach (var part in Project.Parts)

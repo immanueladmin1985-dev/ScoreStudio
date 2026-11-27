@@ -31,7 +31,7 @@ public sealed partial class ScoreEditor
     {
         var at = MarkPlace;
         if (ChordAt(at) is not { } chord || chord[0].Kind != "Note") return EditResult.Refused("꾸밈음으로 바꿀 음표를 먼저 누르세요.");
-        if (NextChord(at) is null) return EditResult.Refused("꾸밈음이 붙을 다음 음표가 이 성부에 없습니다.");
+        if (NextChord(at) is not { } target || target.Chord[0].Kind != "Note") return EditResult.Refused("꾸밈음이 붙을 다음 음표가 이 성부에 없습니다(다음이 쉼표이거나 성부 끝입니다).");
 
         return Change(() =>
         {
@@ -46,14 +46,13 @@ public sealed partial class ScoreEditor
             var index = carrier.GraceNotes.FindIndex(g => g.After);
             carrier.GraceNotes.InsertRange(index < 0 ? carrier.GraceNotes.Count : index, graces);
 
+            // As when a note is deleted: a tie into it goes, and the time becomes a rest.
             var measure = MeasureAt(at);
+            UntieInto(at, notes);
             foreach (var e in notes) measure.Events.Remove(e);
-            measure.Events.Add(new ScoreEvent
-            {
-                Kind = "Rest", Staff = at.Staff, Voice = at.Voice, PositionNumerator = notes[0].PositionNumerator, PositionDenominator = notes[0].PositionDenominator,
-                DurationNumerator = notes[0].DurationNumerator, DurationDenominator = notes[0].DurationDenominator,
-            });
+            measure.Events.Add(NewRest(at, Start(notes[0]), Duration(notes[0])));
             measure.Events = measure.Events.OrderBy(e => e.Staff).ThenBy(e => e.Voice).ThenBy(Start).ToList();
+            DissolveRestTuplets(measure, at.Staff, at.Voice);
             AutoBeam(measure, at.Staff, at.Voice);
             if (!ReferenceEquals(nextMeasure, measure)) AutoBeam(nextMeasure, at.Staff, at.Voice);
             return null;
