@@ -516,4 +516,20 @@ public sealed class MarksLayoutTests
         Assert.True(text.Y < (line.Y1 + line.Y2) / 2, "above the line's middle");
         Assert.InRange(text.X, line.X1, line.X2);
     }
+
+    [Fact]
+    public void Glissando_ToTheNextSystem_FinishesThere()
+    {
+        var project = Score(2, Note("C5", 72, 0, 4));
+        project.Parts[0].Measures[1].Events.Add(Note("G5", 79, 0, 4));
+        project.Parts[0].Measures[1].SystemBreak = true;
+        project.Parts[0].Measures[0].Glissandos.Add(new ScoreGlissando { PositionNumerator = 0, EndMeasureOffset = 1, EndPositionNumerator = 0 });
+        var layout = ScoreLayoutEngine.Layout(project);
+        var systems = layout.Pages[0].Systems;
+        Assert.Equal(2, systems.Count);
+
+        var lines = layout.Pages[0].Items.OfType<LineItem>().Where(l => Math.Abs(l.Thickness - Smufl.StemThickness * Sp * 1.2) < 1e-9).ToList();
+        Assert.Contains(lines, l => l.Y1 < systems[1].Top);                     // to the end of the first system
+        Assert.Contains(lines, l => l.Y1 > systems[1].Top && l.Y2 < l.Y1);       // rising to the G5 in the second
+    }
 }

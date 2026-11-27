@@ -12,7 +12,11 @@ public static partial class ScoreLayoutEngine
         public List<PendingSlur> Slurs { get; } = new();
         public List<PendingHairpin> Hairpins { get; } = new();
         public List<PendingLine> Lines { get; } = new();
+        public List<PendingGlissando> Glissandos { get; } = new();
     }
+
+    /// <summary>A glissando going on into the next system: where it ends, and the staff position it started from.</summary>
+    private sealed record PendingGlissando(int PartIndex, ScoreGlissando Glissando, int EndMeasure, int StartPosition);
 
     private sealed record PendingLine(int PartIndex, ScoreLine Line, int EndMeasure, Rational EndPosition, bool Above, int StartMeasure = 0);
 
@@ -840,13 +844,40 @@ public static partial class ScoreLayoutEngine
     /// </summary>
     private static void DrawGlissandos(
         List<DrawItem> items, ScoreProject project, PlannedSystem plan, List<PlacedChord> placed, List<StaffSlot> slots, double[] staffTops,
-        double systemRight, double sp)
+        double contentLeft, double systemRight, PendingSpans pending, double sp)
     {
         if (plan.MeasureCount == 0) return;
+        var lastMeasure = plan.Measures[^1].Index;
+        var thickness = Smufl.StemThickness * sp * 1.2;
         PlacedChord? Find(int part, int staff, int voice, int measure, Rational at)
         {
             var slot = slots.FindIndex(s => s.PartIndex == part && s.StaffIndex == staff);
             return slot < 0 ? null : placed.FirstOrDefault(c => c.Slot == slot && c.Measure == measure && c.Chord.Voice == voice && c.Chord.Start == at);
+        }
+
+        double EndX(PlacedChord end) =>
+            end.X - 0.4 * sp - (end.Chord.Notes.Any(n => n.Accidental is not null) ? NotePreparation.AccidentalColumnWidth * sp : 0);
+
+        // A glissando from the system before ends here: from the start of the system, halfway between the pitches.
+        var carried = pending.Glissandos.ToList();
+        pending.Glissandos.Clear();
+        foreach (var carry in carried)
+        {
+            var g = carry.Glissando;
+            if (carry.EndMeasure > lastMeasure)
+            {
+                pending.Glissandos.Add(carry);
+                continue;
+            }
+
+            if (Find(carry.PartIndex, g.EndStaff, g.EndVoice, carry.EndMeasure, new Rational(g.EndPositionNumerator, g.EndPositionDenominator)) is not { } end) continue;
+            var endPosition = end.Chord.Notes.Max(n => n.Position);
+            var y2 = StaffY(staffTops[end.Slot], endPosition, sp);
+            var y1 = StaffY(staffTops[end.Slot], (carry.StartPosition + endPosition) / 2, sp);
+            var x2 = EndX(end);
+            if (x2 <= contentLeft) continue;
+            if (g.Wavy) AddZigzag(items, contentLeft, y1, x2, y2, 0.22 * sp, 0.45 * sp, thickness);
+            else items.Add(new LineItem(contentLeft, y1, x2, y2, thickness));
         }
 
         foreach (var planned in plan.Measures)
@@ -863,12 +894,15 @@ public static partial class ScoreLayoutEngine
                     var head = Smufl.NoteheadWidth(start.Chord.Value.Type) * sp;
                     var x1 = start.X + head * (start.Chord.Notes.Any(n => n.Side > 0) ? 2 : 1) + 0.4 * sp;
                     var y1 = StaffY(staffTops[start.Slot], start.Chord.Notes.Max(n => n.Position), sp);
-                    var (x2, y2) = end is null
-                        ? (systemRight - 0.5 * sp, y1)
-                        : (end.X - 0.4 * sp - (end.Chord.Notes.Any(n => n.Accidental is not null) ? NotePreparation.AccidentalColumnWidth * sp : 0),
-                            StaffY(staffTops[end.Slot], end.Chord.Notes.Max(n => n.Position), sp));
+                    var endMeasure = planned.Index + glissando.EndMeasureOffset;
+                    var goesOn = end is null && endMeasure > lastMeasure;
+                    // One that goes on into the next system rises (or falls) halfway here, and finishes there.
+                    var (x2, y2) = end is not null
+                        ? (EndX(end), StaffY(staffTops[end.Slot], end.Chord.Notes.Max(n => n.Position), sp))
+                        : (systemRight - 0.5 * sp, y1);
+                    if (goesOn)
+                        pending.Glissandos.Add(new PendingGlissando(p, glissando, endMeasure, start.Chord.Notes.Max(n => n.Position)));
                     if (x2 <= x1) continue;
-                    var thickness = Smufl.StemThickness * sp * 1.2;
                     if (glissando.Wavy) AddZigzag(items, x1, y1, x2, y2, 0.22 * sp, 0.45 * sp, thickness);
                     else items.Add(new LineItem(x1, y1, x2, y2, thickness));
 

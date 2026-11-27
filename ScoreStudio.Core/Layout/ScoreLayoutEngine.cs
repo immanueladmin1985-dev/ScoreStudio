@@ -859,7 +859,7 @@ public static partial class ScoreLayoutEngine
         DrawOctaveLines(items, placed, staffTops, sp);
         DrawTies(items, placed, slots, staffTops, left + plan.HeaderWidth, right, pendingTies, sp);
         DrawSlurs(items, project, plan, placed, slots, staffTops, left + plan.HeaderWidth, right, pendingSpans, sp);
-        DrawGlissandos(items, project, plan, placed, slots, staffTops, right, sp);
+        DrawGlissandos(items, project, plan, placed, slots, staffTops, left + plan.HeaderWidth, right, pendingSpans, sp);
         DrawLyrics(items, placed, rests, staffTops, right, lyricSize, TextMetrics.IsSerifFamily(project.Engraving?.LyricFontFamily), sp);
         var frames = new List<(int Slot, double Left, double Right, double Top)>();
         var symbolTops = DrawChordSymbols(items, symbols, placed, staffTops, lyricSize, sp, frames);
