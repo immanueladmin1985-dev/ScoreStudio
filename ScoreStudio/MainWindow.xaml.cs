@@ -624,7 +624,7 @@ public partial class MainWindow : Window
             dialog.PrintDocument(new ScorePaginator(layout), string.IsNullOrWhiteSpace(Project.Title) ? "ScoreStudio 악보" : Project.Title);
             StatusText.Content = $"인쇄를 보냈습니다 ({layout.Pages.Count}쪽).";
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.Printing.PrintSystemException or IOException or ArgumentException)
+        catch (Exception ex) when (ex is InvalidOperationException or System.Printing.PrintSystemException or System.IO.IOException or ArgumentException)
         {
             MessageBox.Show(this, $"인쇄하지 못했습니다.\n\n{ex.Message}", "인쇄 오류", MessageBoxButton.OK, MessageBoxImage.Error);
             StatusText.Content = "인쇄 실패";
