@@ -608,15 +608,23 @@ public partial class MainWindow : Window
     /// <summary>Prints the score as it is laid out on screen, one layout page per printed page (docs/PDF_EXPORT.md).</summary>
     private void Print_Click(object sender, RoutedEventArgs e)
     {
+        var layout = ScoreLayoutEngine.Layout(Project);
         var dialog = new PrintDialog { UserPageRangeEnabled = false };
+        // The printer gets the score's own paper size and orientation, so pages are not cut off.
+        if (layout.Pages.FirstOrDefault() is { } first)
+        {
+            dialog.PrintTicket.PageOrientation = first.Width > first.Height ? System.Printing.PageOrientation.Landscape : System.Printing.PageOrientation.Portrait;
+            dialog.PrintTicket.PageMediaSize = new System.Printing.PageMediaSize(
+                Math.Min(first.Width, first.Height) * PageRenderer.DipPerMm, Math.Max(first.Width, first.Height) * PageRenderer.DipPerMm);
+        }
+
         if (dialog.ShowDialog() != true) return;
         try
         {
-            var layout = ScoreLayoutEngine.Layout(Project);
             dialog.PrintDocument(new ScorePaginator(layout), string.IsNullOrWhiteSpace(Project.Title) ? "ScoreStudio 악보" : Project.Title);
             StatusText.Content = $"인쇄를 보냈습니다 ({layout.Pages.Count}쪽).";
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.Printing.PrintSystemException)
+        catch (Exception ex) when (ex is InvalidOperationException or System.Printing.PrintSystemException or IOException or ArgumentException)
         {
             MessageBox.Show(this, $"인쇄하지 못했습니다.\n\n{ex.Message}", "인쇄 오류", MessageBoxButton.OK, MessageBoxImage.Error);
             StatusText.Content = "인쇄 실패";
@@ -640,8 +648,10 @@ public partial class MainWindow : Window
         {
             Project.Title = TitleInput.Text.Trim();
             var layout = ScoreLayoutEngine.Layout(Project);
-            PdfExporter.ExportFile(Project, layout, PdfFonts.Windows(System.IO.Path.Combine(MusicFont.FontDirectory, MusicFont.FileName)), dialog.FileName);
+            var warnings = PdfExporter.ExportFile(Project, layout, PdfFonts.Windows(System.IO.Path.Combine(MusicFont.FontDirectory, MusicFont.FileName)), dialog.FileName);
             StatusText.Content = $"PDF 내보내기 완료: {System.IO.Path.GetFileName(dialog.FileName)} ({layout.Pages.Count}쪽)";
+            if (warnings.Count > 0)
+                MessageBox.Show(this, string.Join("\n", warnings), "PDF 내보내기 경고", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         catch (Exception ex)
         {

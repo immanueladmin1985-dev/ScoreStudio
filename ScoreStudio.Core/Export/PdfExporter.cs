@@ -34,7 +34,8 @@ public static class PdfExporter
     private const double PointsPerMm = 72 / 25.4;
 
     /// <summary>Writes the PDF to a file through a temporary file, refusing the file the score was imported from.</summary>
-    public static void ExportFile(ScoreProject project, ScoreLayout layout, PdfFonts fonts, string path)
+    /// <returns>What could not be shown as it should (see <see cref="Write"/>).</returns>
+    public static IReadOnlyList<string> ExportFile(ScoreProject project, ScoreLayout layout, PdfFonts fonts, string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         string fullPath;
@@ -55,27 +56,38 @@ public static class PdfExporter
         try
         {
             Directory.CreateDirectory(directory);
+            IReadOnlyList<string> warnings;
             using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write))
-                Write(layout, fonts, stream, project.Title);
+                warnings = Write(layout, fonts, stream, project.Title);
             File.Move(tempPath, fullPath, overwrite: true);
+            return warnings;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or IndexOutOfRangeException
+                                       or ProjectFileException)
         {
             try { File.Delete(tempPath); } catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException) { }
-            throw new ProjectFileException($"PDF를 내보낼 수 없습니다.\n{fullPath}\n\n{ex.Message}", ex);
+            throw ex as ProjectFileException ?? new ProjectFileException($"PDF를 내보낼 수 없습니다.\n{fullPath}\n\n{ex.Message}", ex);
         }
     }
 
-    /// <summary>Writes every page of a layout to a PDF stream.</summary>
-    public static void Write(ScoreLayout layout, PdfFonts fonts, Stream output, string title = "")
+    /// <summary>
+    /// Writes every page of a layout to a PDF stream. Fails when the music font or every text font is missing, since the
+    /// score would be printed without notes or words.
+    /// </summary>
+    /// <returns>What could not be shown as it should: characters no font has (drawn as empty boxes).</returns>
+    public static IReadOnlyList<string> Write(ScoreLayout layout, PdfFonts fonts, Stream output, string title = "")
     {
-        var music = File.Exists(fonts.MusicFont) ? new EmbeddedFont(OpenTypeFont.Load(fonts.MusicFont)) : null;
+        var fontCount = 0;
+        EmbeddedFont Embed(OpenTypeFont font) => new(font, ++fontCount);
+        if (!File.Exists(fonts.MusicFont)) throw new ProjectFileException($"악보 글꼴(Bravura)을 찾을 수 없습니다.\n{fonts.MusicFont}");
+        var music = Embed(OpenTypeFont.Load(fonts.MusicFont));
+        var missing = new SortedSet<int>();
         var cache = new Dictionary<string, EmbeddedFont?>(StringComparer.OrdinalIgnoreCase);
         List<EmbeddedFont> Chain(IEnumerable<string> paths) => paths.Select(p =>
         {
             if (!cache.TryGetValue(p, out var font))
             {
-                try { font = File.Exists(p) && OpenTypeFont.Load(p) is { Embeddable: true } f ? new EmbeddedFont(f) : null; }
+                try { font = File.Exists(p) && OpenTypeFont.Load(p) is { Embeddable: true, CanEmbed: true } f ? Embed(f) : null; }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or ArgumentOutOfRangeException or IndexOutOfRangeException) { font = null; }
                 cache[p] = font;
             }
@@ -90,6 +102,11 @@ public static class PdfExporter
             [(true, true, false)] = Chain(fonts.BoldItalic),
         };
         var serif = Chain(fonts.Serif);
+        if (chains.Values.All(c => c.Count == 0) && serif.Count == 0)
+            throw new ProjectFileException("PDF에 넣을 글자 글꼴을 찾을 수 없습니다(맑은 고딕, Segoe UI 등).");
+        // A style without fonts of its own borrows the regular ones.
+        foreach (var key in chains.Keys.ToList()) if (chains[key].Count == 0) chains[key] = chains[(false, false, false)].Count > 0 ? chains[(false, false, false)] : serif;
+        if (serif.Count == 0) serif = chains[(false, false, false)];
 
         var pdf = new PdfDocument();
         var pageIds = new List<int>();
@@ -99,7 +116,7 @@ public static class PdfExporter
             var content = new StringBuilder();
             var height = page.Height * PointsPerMm;
             foreach (var item in page.Items)
-                WriteItem(content, item, height, music, chains, serif);
+                WriteItem(content, item, height, music, chains, serif, missing);
             var contentId = pdf.AddStream(Encoding.Latin1.GetBytes(content.ToString()), compress: true);
             pageIds.Add(pdf.Reserve());
             pdf.Set(pageIds[^1], $"<< /Type /Page /Parent {pagesId} 0 R /MediaBox [0 0 {N(page.Width * PointsPerMm)} {N(height)}] /Resources {pdf.FontResourcesPlaceholder} /Contents {contentId} 0 R >>");
@@ -116,6 +133,8 @@ public static class PdfExporter
         var info = pdf.Add($"<< /Title {PdfDocument.TextString(title)} /Producer (ScoreStudio) >>");
         var catalog = pdf.Add($"<< /Type /Catalog /Pages {pagesId} 0 R >>");
         pdf.WriteTo(output, catalog, info);
+        return missing.Count == 0 ? Array.Empty<string>()
+            : new[] { $"글꼴에 없는 글자는 빈 네모로 나옵니다: {string.Concat(missing.Take(20).Select(char.ConvertFromUtf32))}" };
     }
 
     private static string N(double value) => Math.Round(value, 3).ToString("0.###", CultureInfo.InvariantCulture);
@@ -123,7 +142,7 @@ public static class PdfExporter
     private static (double X, double Y) P(double x, double y, double height) => (x * PointsPerMm, height - y * PointsPerMm);
 
     private static void WriteItem(StringBuilder content, DrawItem item, double height, EmbeddedFont? music,
-        Dictionary<(bool, bool, bool), List<EmbeddedFont>> chains, List<EmbeddedFont> serif)
+        Dictionary<(bool, bool, bool), List<EmbeddedFont>> chains, List<EmbeddedFont> serif, SortedSet<int> missing)
     {
         switch (item)
         {
@@ -167,7 +186,7 @@ public static class PdfExporter
                 var chain = text.Serif ? serif : chains[(text.Bold, text.Italic, false)];
                 if (chain.Count == 0) break;
                 var size = text.Size * PointsPerMm;
-                var runs = Runs(text.Text, chain);
+                var runs = Runs(text.Text, chain, missing);
                 var width = runs.Sum(r => r.Font.Width(r.Glyphs) * size);
                 var (x, y) = P(text.X, text.Y, height);
                 // Along the baseline, turned clockwise on the page (counter-clockwise in PDF, whose y points up).
@@ -186,14 +205,22 @@ public static class PdfExporter
     }
 
     /// <summary>The text split into runs of one font each: every character in the first font of the chain that has it.</summary>
-    private static List<(EmbeddedFont Font, List<int> Glyphs)> Runs(string text, List<EmbeddedFont> chain)
+    private static List<(EmbeddedFont Font, List<int> Glyphs)> Runs(string text, List<EmbeddedFont> chain, SortedSet<int> missing)
     {
         var runs = new List<(EmbeddedFont Font, List<int> Glyphs)>();
         for (var i = 0; i < text.Length; i++)
         {
-            var codePoint = char.ConvertToUtf32(text, i);
-            if (char.IsHighSurrogate(text[i])) i++;
-            var font = chain.FirstOrDefault(f => f.Font.GlyphOf(codePoint) != 0) ?? chain[0];
+            // A lone surrogate (from pasted text) becomes the replacement character.
+            int codePoint;
+            if (char.IsSurrogatePair(text, i)) codePoint = char.ConvertToUtf32(text[i], text[++i]);
+            else codePoint = char.IsSurrogate(text[i]) ? 0xFFFD : text[i];
+            var font = chain.FirstOrDefault(f => f.Font.GlyphOf(codePoint) != 0);
+            if (font is null)
+            {
+                font = chain[0];
+                if (!char.IsWhiteSpace((char)Math.Min(codePoint, 0xFFFF))) missing.Add(codePoint);
+            }
+
             var glyph = font.Use(codePoint);
             if (runs.Count == 0 || runs[^1].Font != font) runs.Add((font, new List<int>()));
             runs[^1].Glyphs.Add(glyph);
@@ -205,13 +232,18 @@ public static class PdfExporter
     /// <summary>A font in the PDF: the glyphs used, and the characters they stand for (for copying text).</summary>
     private sealed class EmbeddedFont
     {
-        private static int _next;
-
-        public EmbeddedFont(OpenTypeFont font)
+        public EmbeddedFont(OpenTypeFont font, int index)
         {
             Font = font;
-            ResourceName = "F" + Interlocked.Increment(ref _next).ToString(CultureInfo.InvariantCulture);
+            ResourceName = "F" + index.ToString(CultureInfo.InvariantCulture);
+            // A subset tag is exactly six capital letters: the font's number in this file, in base 26.
+            var tag = new char[6];
+            for (var (n, at) = (index, 5); at >= 0; n /= 26, at--) tag[at] = (char)('A' + n % 26);
+            Tag = new string(tag);
         }
+
+        /// <summary>The six-letter tag before the font's name, unique in this file.</summary>
+        public string Tag { get; }
 
         public OpenTypeFont Font { get; }
         public string ResourceName { get; }
@@ -231,8 +263,7 @@ public static class PdfExporter
         public int WriteTo(PdfDocument pdf)
         {
             var scale = 1000.0 / Font.UnitsPerEm;
-            var tag = new string(ResourceName.PadLeft(6, 'A').Select(c => (char)('A' + c % 26)).ToArray());
-            var name = $"{tag}+{Font.Name}";
+            var name = $"{Tag}+{Font.Name}";
             var program = Font.IsCff ? Font.Data : Font.SubsetTrueType(Used.Keys);
             var fileId = pdf.AddStream(program, compress: true, extra: Font.IsCff ? "/Subtype /OpenType" : $"/Length1 {program.Length}");
             var (xMin, yMin, xMax, yMax) = Font.BoundingBox;

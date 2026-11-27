@@ -140,6 +140,39 @@ public sealed class PdfExporterTests : IDisposable
         Assert.Equal((font.NumGlyphs, font.UnitsPerEm, font.Advance(a)), (reread.NumGlyphs, reread.UnitsPerEm, reread.Advance(a)));
     }
 
+    [Fact]
+    public void LoneSurrogates_AndCharactersNoFontHas_DoNotStopTheExport_ButAreReported()
+    {
+        var project = ScoreProject.CreateNew();
+        project.Title = "제목\uD800끝 \U0010FFFD"; // a lone surrogate, and a private-use character no font has
+        var layout = ScoreLayoutEngine.Layout(project);
+        using var stream = new MemoryStream();
+        var warnings = PdfExporter.Write(layout, Fonts(), stream, project.Title);
+        Assert.StartsWith("%PDF", Encoding.Latin1.GetString(stream.ToArray(), 0, 8));
+        Assert.Contains(warnings, w => w.Contains("빈 네모"));
+    }
+
+    [Fact]
+    public void MissingMusicFont_FailsInsteadOfPrintingAScoreWithoutNotes_AndLeavesNoTemporaryFile()
+    {
+        var project = ScoreProject.CreateNew();
+        var fonts = Fonts() with { MusicFont = Path.Combine(_dir, "없는 글꼴.otf") };
+        var error = Assert.Throws<ProjectFileException>(() => PdfExporter.ExportFile(project, ScoreLayoutEngine.Layout(project), fonts, Path.Combine(_dir, "악보.pdf")));
+        Assert.Contains("Bravura", error.Message);
+        Assert.Empty(Directory.GetFiles(_dir));
+    }
+
+    [Fact]
+    public void SubsetTags_AreSixCapitalLetters()
+    {
+        var project = MusicXmlImporter.ImportFile(Sample("pedal-segno-coda.musicxml")).Project;
+        using var stream = new MemoryStream();
+        PdfExporter.Write(ScoreLayoutEngine.Layout(project), Fonts(), stream);
+        var names = Regex.Matches(Readable(stream.ToArray()), "/BaseFont /([^ /]+)").Select(m => m.Groups[1].Value).ToList();
+        Assert.NotEmpty(names);
+        Assert.All(names, n => Assert.Matches("^[A-Z]{6}\\+", n));
+    }
+
     /// <summary>On the CI, a PDF of a real score goes with the previews, made with this machine's fonts.</summary>
     [Fact]
     public void PreviewPdf_IsWrittenForTheRelease()

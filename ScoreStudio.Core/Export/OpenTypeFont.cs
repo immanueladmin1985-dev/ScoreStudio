@@ -25,6 +25,14 @@ public sealed class OpenTypeFont
     /// <summary>A CFF-outline font (.otf); otherwise TrueType outlines.</summary>
     public bool IsCff => _tables.ContainsKey("CFF ");
 
+    /// <summary>
+    /// Whether ScoreStudio can put the font in a PDF: CFF fonts whole, TrueType fonts cut down (so they need glyf and
+    /// loca, and their licence must allow subsetting, fsType bit 8). CFF2 and bitmap-only fonts cannot.
+    /// </summary>
+    public bool CanEmbed => IsCff
+        ? !_tables.ContainsKey("CFF2")
+        : _tables.ContainsKey("glyf") && _tables.ContainsKey("loca") && (!_tables.TryGetValue("OS/2", out var os2) || (U16(os2.Offset + 8) & 0x0300) == 0);
+
     /// <summary>False when the font's licence (OS/2 fsType) forbids embedding it.</summary>
     public bool Embeddable { get; }
 
@@ -170,7 +178,7 @@ public sealed class OpenTypeFont
         while (queue.Count > 0)
         {
             var g = queue.Dequeue();
-            if (!keep.Add(g)) continue;
+            if (g >= NumGlyphs || !keep.Add(g)) continue; // a damaged font may name glyphs it does not have
             var (start, end) = (Location(g), Location(g + 1));
             if (end - start < 10 || S16(glyf + start) >= 0) continue;
             var at = glyf + start + 10;
